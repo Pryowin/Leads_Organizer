@@ -1,0 +1,16 @@
+## Title: Leads Organizer
+## Description: Filter, sort, and search scrying leads in the Antiquities journal.
+## Version: 1.0.0
+## APIVersion: 101049 101050
+## AddOnVersion: 100000
+## Author: ESO Community
+## SavedVariables: LeadsOrganizer_SavedVariables
+
+LeadsOrganizer.xml
+LeadsOrganizer.lua
+
+## OptionalDependsOn: LibAddonMenu-2.0
+
+; This Add-on is not created by, affiliated with or sponsored by ZeniMax
+; Media Inc. or its affiliates. The Elder Scrolls and related logos are
+; registered trademarks or trademarks of ZeniMax Media Inc.

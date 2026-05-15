@@ -1,0 +1,31 @@
+<GuiXml>
+    <Controls>
+        <Control name="LeadsOrganizerBar" virtual="true" resizeToFitDescendents="true">
+            <Dimensions x="520" y="56" />
+            <Controls>
+                <Control name="$(parent)SortLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                    <Anchor point="TOPLEFT" offsetX="0" offsetY="0" />
+                </Control>
+                <Control name="$(parent)SortDropdown" inherits="ZO_ComboBox">
+                    <Dimensions x="150" y="30" />
+                    <Anchor point="LEFT" relativeTo="$(parent)SortLabel" relativePoint="RIGHT" offsetX="8" offsetY="0" />
+                </Control>
+                <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
+                    <Anchor point="LEFT" relativeTo="$(parent)SortDropdown" relativePoint="RIGHT" offsetX="16" offsetY="0" />
+                </Button>
+                <Control name="$(parent)ShowGreenLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                    <Anchor point="LEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
+                </Control>
+                <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
+                    <Anchor point="LEFT" relativeTo="$(parent)ShowGreenLabel" relativePoint="RIGHT" offsetX="16" offsetY="0" />
+                </Button>
+                <Control name="$(parent)ShowDoneLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                    <Anchor point="LEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
+                </Control>
+                <Control name="$(parent)SearchStatus" inherits="ZO_LabelHeader" resizeToFitDescendents="true" hidden="true">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
+                </Control>
+            </Controls>
+        </Control>
+    </Controls>
+</GuiXml>
