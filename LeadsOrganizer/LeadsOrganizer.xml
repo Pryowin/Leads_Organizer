@@ -3,28 +3,34 @@
         <Control name="LeadsOrganizerBar" virtual="true" resizeToFitDescendents="true">
             <Dimensions x="520" y="56" />
             <Controls>
-                <Control name="$(parent)SortLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                <Label name="$(parent)SortLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Sort:">
                     <Anchor point="TOPLEFT" offsetX="0" offsetY="0" />
-                </Control>
+                </Label>
                 <Control name="$(parent)SortDropdown" inherits="ZO_ComboBox">
                     <Dimensions x="150" y="30" />
                     <Anchor point="LEFT" relativeTo="$(parent)SortLabel" relativePoint="RIGHT" offsetX="8" offsetY="0" />
                 </Control>
                 <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
                     <Anchor point="LEFT" relativeTo="$(parent)SortDropdown" relativePoint="RIGHT" offsetX="16" offsetY="0" />
+                    <OnClicked>
+                        ZO_CheckButton_OnClicked(...)
+                    </OnClicked>
                 </Button>
-                <Control name="$(parent)ShowGreenLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                <Label name="$(parent)ShowGreenLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Green leads">
                     <Anchor point="LEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
-                </Control>
+                </Label>
                 <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
                     <Anchor point="LEFT" relativeTo="$(parent)ShowGreenLabel" relativePoint="RIGHT" offsetX="16" offsetY="0" />
+                    <OnClicked>
+                        ZO_CheckButton_OnClicked(...)
+                    </OnClicked>
                 </Button>
-                <Control name="$(parent)ShowDoneLabel" inherits="ZO_LabelHeader" resizeToFitDescendents="true">
+                <Label name="$(parent)ShowDoneLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Done before">
                     <Anchor point="LEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
-                </Control>
-                <Control name="$(parent)SearchStatus" inherits="ZO_LabelHeader" resizeToFitDescendents="true" hidden="true">
+                </Label>
+                <Label name="$(parent)SearchStatus" font="ZoFontGameSmall" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_DEFAULT" hidden="true">
                     <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
-                </Control>
+                </Label>
             </Controls>
         </Control>
     </Controls>

@@ -180,34 +180,32 @@ local function FormatAntiquityStatus(antiquityData)
 end
 
 function LO.UpdateSearchStatus()
-    if not LO.searchStatusLabel then
+    local statusLabel = LO.searchStatusLabel
+    if not statusLabel then
         return
     end
 
     local searchText = ADM:GetSearch() or ""
     if zo_strlen(searchText) < 2 then
-        LO.searchStatusLabel:SetHidden(true)
+        statusLabel:SetHidden(true)
         return
     end
 
     local results = ADM:GetSearchResults()
-    local ownedCount = 0
     local unownedCount = 0
     for _, antiquityId in ipairs(results) do
         local antiquityData = ADM:GetAntiquityData(antiquityId)
-        if antiquityData and antiquityData:HasLead() then
-            ownedCount = ownedCount + 1
-        else
+        if antiquityData and not antiquityData:HasLead() then
             unownedCount = unownedCount + 1
         end
     end
 
-    LO.searchStatusLabel:SetText(string.format(
+    statusLabel:SetText(string.format(
         "Search: %d result(s) — %d without lead",
         #results,
         unownedCount
     ))
-    LO.searchStatusLabel:SetHidden(false)
+    statusLabel:SetHidden(false)
 end
 
 function LO.OnSearchResultsUpdated()
@@ -251,6 +249,10 @@ function LO.OnSortSelected(_, _, entry)
 end
 
 function LO.SetupSortDropdown(dropdown)
+    if not dropdown then
+        return
+    end
+
     dropdown:ClearItems()
     dropdown:SetSortsItems(false)
 
@@ -364,30 +366,34 @@ function LO.CreateJournalBar()
     end
 
     local bar = CreateControlFromVirtual("LeadsOrganizerBarInstance", parent, "LeadsOrganizerBar")
+    if not bar then
+        return
+    end
+
     bar:SetAnchor(BOTTOMLEFT, searchControl, TOPLEFT, 0, -8)
     bar:SetAnchor(BOTTOMRIGHT, searchControl, TOPRIGHT, 0, -8)
     LO.barControl = bar
 
-    local sortLabel = bar:GetNamedChild("SortLabel")
-    sortLabel:SetText("Sort:")
-
-    local sortDropdown = ZO_ComboBox_ObjectFromContainer(bar:GetNamedChild("SortDropdown"))
-    LO.sortDropdown = sortDropdown
-    LO.SetupSortDropdown(sortDropdown)
+    local sortDropdownControl = bar:GetNamedChild("SortDropdown")
+    local sortDropdown = sortDropdownControl and ZO_ComboBox_ObjectFromContainer(sortDropdownControl)
+    if sortDropdown then
+        LO.sortDropdown = sortDropdown
+        LO.SetupSortDropdown(sortDropdown)
+    end
 
     local showGreenToggle = bar:GetNamedChild("ShowGreenToggle")
-    LO.showGreenToggle = showGreenToggle
-    LO.SetCheckButtonState(showGreenToggle, GetSettings().showGreenAlwaysAvailable)
-    showGreenToggle:SetHandler("OnClicked", LO.OnShowGreenToggled)
-    local showGreenLabel = bar:GetNamedChild("ShowGreenLabel")
-    showGreenLabel:SetText("Green leads")
+    if showGreenToggle then
+        LO.showGreenToggle = showGreenToggle
+        LO.SetCheckButtonState(showGreenToggle, GetSettings().showGreenAlwaysAvailable)
+        showGreenToggle:SetHandler("OnClicked", LO.OnShowGreenToggled)
+    end
 
     local showDoneToggle = bar:GetNamedChild("ShowDoneToggle")
-    LO.showDoneToggle = showDoneToggle
-    LO.SetCheckButtonState(showDoneToggle, GetSettings().showCompletedBefore)
-    showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
-    local showDoneLabel = bar:GetNamedChild("ShowDoneLabel")
-    showDoneLabel:SetText("Done before")
+    if showDoneToggle then
+        LO.showDoneToggle = showDoneToggle
+        LO.SetCheckButtonState(showDoneToggle, GetSettings().showCompletedBefore)
+        showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
+    end
 
     LO.searchStatusLabel = bar:GetNamedChild("SearchStatus")
 end
