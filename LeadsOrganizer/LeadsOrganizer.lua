@@ -1,13 +1,14 @@
 --[[
-    Leads Organizer — filter, sort, and search scrying leads.
-    Dedicated panel: /leadsorg or keybind (Controls → Keybindings → General).
+    Leads Organizer — filter and sort scrying leads.
+    Panel: /leadsorg or keybind (Controls → Keybindings → General).
+    Search uses the in-game Antiquities journal; this panel lists active leads only.
 ]]
 
 LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.1.0"
+LO.version = "1.2.2"
 LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
@@ -31,9 +32,57 @@ local DEFAULT_SETTINGS = {
 }
 
 local NO_EXPIRY_SORT_VALUE = 999999999
-local SEARCH_DEBOUNCE_MS = 250
-local MAX_RESULT_LINES = 45
-local searchDebounceGeneration = 0
+local LEAD_ROW_DATA_TYPE = 1
+
+local function FormatSecondsRough(secs)
+    if not secs or secs <= 0 or secs >= NO_EXPIRY_SORT_VALUE then
+        return nil
+    end
+    local d = zo_floor(secs / 86400)
+    local h = zo_floor((secs % 86400) / 3600)
+    local m = zo_floor((secs % 3600) / 60)
+    if d > 0 then
+        return string.format("%dd %dh", d, h)
+    end
+    if h > 0 then
+        return string.format("%dh %dm", h, m)
+    end
+    if m > 0 then
+        return string.format("%dm", m)
+    end
+    return "<1m"
+end
+
+local function SafeGetLeadExpiryDisplayText(antiquityData)
+    if antiquityData.GetLeadExpirationStatus then
+        local ok, _, timeRemaining = pcall(function()
+            return antiquityData:GetLeadExpirationStatus()
+        end)
+        if ok and timeRemaining and timeRemaining ~= "" then
+            return timeRemaining
+        end
+    end
+    if antiquityData.GetLeadTimeRemainingS then
+        local ok, secs = pcall(function()
+            return antiquityData:GetLeadTimeRemainingS()
+        end)
+        if ok and secs then
+            local rough = FormatSecondsRough(secs)
+            if rough then
+                return rough .. " left"
+            end
+        end
+    end
+    local id = antiquityData.GetId and antiquityData:GetId() or antiquityData.antiquityId
+    if id and GetAntiquityLeadTimeRemainingSeconds then
+        local secs = GetAntiquityLeadTimeRemainingSeconds(id)
+        local rough = FormatSecondsRough(secs)
+        if rough then
+            return rough .. " left"
+        end
+    end
+    return nil
+end
 
 local function StripGenderSuffix(text)
     if not text or text == "" then
@@ -47,16 +96,28 @@ local function GetSettings()
 end
 
 function LO.IsGreenAlwaysAvailable(antiquityData)
-    return not antiquityData:RequiresLead()
+    if antiquityData.RequiresLead then
+        return not antiquityData:RequiresLead()
+    end
+    return antiquityData.requiresLead == false
 end
 
 function LO.HasCompletedBefore(antiquityData)
-    return antiquityData:GetNumRecovered() > 0 or antiquityData:HasAchievedAllGoals()
+    if antiquityData.GetNumRecovered and (antiquityData:GetNumRecovered() or 0) > 0 then
+        return true
+    end
+    if (antiquityData.numRecovered or 0) > 0 then
+        return true
+    end
+    if antiquityData.HasAchievedAllGoals and antiquityData:HasAchievedAllGoals() then
+        return true
+    end
+    return false
 end
 
 function LO.AntiquityPassesFilters(antiquityData)
     local settings = GetSettings()
-    if settings.hideAboveScryingSkill and not antiquityData:MeetsScryingSkillRequirements() then
+    if settings.hideAboveScryingSkill and antiquityData.MeetsScryingSkillRequirements and not antiquityData:MeetsScryingSkillRequirements() then
         return false
     end
     if not settings.showGreenAlwaysAvailable and LO.IsGreenAlwaysAvailable(antiquityData) then
@@ -73,23 +134,45 @@ function LO.FilterAllActiveLeads(antiquityData)
 end
 
 local function GetLeadSortTime(antiquityData)
-    if not antiquityData:HasLead() then
+    if not (antiquityData.HasLead and antiquityData:HasLead()) then
         return NO_EXPIRY_SORT_VALUE
     end
-    local leadTime = antiquityData:GetLeadTimeRemainingS()
-    if leadTime == 0 then
+    local leadTime
+    if antiquityData.GetLeadTimeRemainingS then
+        leadTime = antiquityData:GetLeadTimeRemainingS()
+    end
+    if (not leadTime or leadTime == 0) and antiquityData.GetId and GetAntiquityLeadTimeRemainingSeconds then
+        leadTime = GetAntiquityLeadTimeRemainingSeconds(antiquityData:GetId())
+    end
+    if not leadTime or leadTime == 0 then
         return NO_EXPIRY_SORT_VALUE
     end
     return leadTime
 end
 
+local function GetAntiquityZoneId(antiquityData)
+    if antiquityData.GetZoneId then
+        return antiquityData:GetZoneId()
+    end
+    return antiquityData.zoneId
+end
+
+local function CompareAntiquityNames(left, right)
+    if left.CompareNameTo and right.CompareNameTo then
+        return left:CompareNameTo(right)
+    end
+    local ln = (left.GetName and left:GetName()) or ""
+    local rn = (right.GetName and right:GetName()) or ""
+    return ln < rn
+end
+
 function LO.SortByZone(leftAntiquityData, rightAntiquityData)
-    local leftZone = GetZoneNameById(leftAntiquityData:GetZoneId()) or ""
-    local rightZone = GetZoneNameById(rightAntiquityData:GetZoneId()) or ""
+    local leftZone = GetZoneNameById(GetAntiquityZoneId(leftAntiquityData)) or ""
+    local rightZone = GetZoneNameById(GetAntiquityZoneId(rightAntiquityData)) or ""
     if leftZone ~= rightZone then
         return leftZone < rightZone
     end
-    return leftAntiquityData:CompareNameTo(rightAntiquityData)
+    return CompareAntiquityNames(leftAntiquityData, rightAntiquityData)
 end
 
 function LO.SortByExpiry(leftAntiquityData, rightAntiquityData)
@@ -102,7 +185,7 @@ function LO.SortByExpiry(leftAntiquityData, rightAntiquityData)
 end
 
 function LO.SortByName(leftAntiquityData, rightAntiquityData)
-    return leftAntiquityData:CompareNameTo(rightAntiquityData)
+    return CompareAntiquityNames(leftAntiquityData, rightAntiquityData)
 end
 
 function LO.GetActiveSortFunction()
@@ -138,12 +221,153 @@ function LO.ApplySubcategoryFilter()
     end
 end
 
+--- Same notion as “All Active Leads”: in progress, has a lead, or always-available (no lead required).
+local function IsActiveLeadCandidate(antiquityData)
+    if antiquityData.HasAchievedAllGoals and antiquityData:HasAchievedAllGoals() then
+        return false
+    end
+    local inProgress = antiquityData.IsInProgress and antiquityData:IsInProgress()
+    local hasLead = antiquityData.HasLead and antiquityData:HasLead()
+    if inProgress or hasLead then
+        return true
+    end
+    if antiquityData.RequiresLead then
+        if not antiquityData:RequiresLead() then
+            return true
+        end
+    elseif antiquityData.requiresLead == false then
+        return true
+    end
+    return false
+end
+
+function LO.CollectFilteredActiveLeads()
+    local seen = {}
+    local list = {}
+
+    if ADM and ADM.antiquities then
+        for _, antiquityData in pairs(ADM.antiquities) do
+            if antiquityData and IsActiveLeadCandidate(antiquityData) and LO.AntiquityPassesFilters(antiquityData) then
+                local id = (antiquityData.GetId and antiquityData:GetId()) or antiquityData.antiquityId
+                if id and not seen[id] then
+                    seen[id] = true
+                    table.insert(list, antiquityData)
+                end
+            end
+        end
+    end
+
+    local sortFn = LO.GetActiveSortFunction()
+    table.sort(list, sortFn)
+
+    return list
+end
+
+function LO.SetupLeadScrollRow(control, data)
+    local label = control:GetNamedChild("Text")
+    if not label then
+        return
+    end
+    local payload = data
+    if type(data) == "table" and data.data ~= nil then
+        payload = data.data
+    end
+    local text = ""
+    if type(payload) == "table" then
+        text = payload.text or ""
+    elseif type(payload) == "string" then
+        text = payload
+    end
+    label:SetText(text)
+end
+
+function LO.SetupResultsScrollList()
+    if LO.leadScrollInitialized then
+        return
+    end
+    local backdrop = LO.window and LO.window:GetNamedChild("ResultsBackdrop")
+    LO.resultsScroll = backdrop and backdrop:GetNamedChild("ScrollList")
+    if not LO.resultsScroll or not ZO_ScrollList_AddDataType then
+        return
+    end
+    ZO_ScrollList_AddDataType(LO.resultsScroll, LEAD_ROW_DATA_TYPE, "LeadsOrganizerLeadRow", 44, LO.SetupLeadScrollRow, nil)
+    LO.leadScrollInitialized = true
+end
+
+function LO.RefreshPanelLeadList()
+    LO.SetupResultsScrollList()
+    local scroll = LO.resultsScroll
+    if not scroll then
+        return
+    end
+
+    local scrollData = ZO_ScrollList_GetDataList(scroll)
+    ZO_ClearNumericallyIndexedTable(scrollData)
+
+    local list = LO.CollectFilteredActiveLeads()
+    if #list == 0 then
+        table.insert(scrollData, ZO_ScrollList_CreateDataEntry(LEAD_ROW_DATA_TYPE, {
+            text = "No active leads match the current filters. Open Journal → Antiquities → Scryable once if this stays empty.",
+        }))
+    else
+        for i = 1, #list do
+            local antiquityData = list[i]
+            local quality = (antiquityData.GetQuality and antiquityData:GetQuality()) or 0
+            local rawName = (antiquityData.GetName and antiquityData:GetName()) or "?"
+            local qualityColor = GetAntiquityQualityColor(quality)
+            local name = qualityColor:Colorize(StripGenderSuffix(rawName))
+            local line = string.format("• %s — %s", name, LO.FormatLeadLineDetail(antiquityData))
+            table.insert(scrollData, ZO_ScrollList_CreateDataEntry(LEAD_ROW_DATA_TYPE, { text = line }))
+        end
+    end
+
+    ZO_ScrollList_Commit(scroll)
+    if ZO_ScrollList_ResetToTop then
+        ZO_ScrollList_ResetToTop(scroll)
+    end
+end
+
+function LO.FormatLeadLineDetail(antiquityData)
+    local parts = {}
+    local zoneId = antiquityData.GetZoneId and antiquityData:GetZoneId() or antiquityData.zoneId
+    local zoneName = zoneId and GetZoneNameById(zoneId) or nil
+    if zoneName and zoneName ~= "" then
+        table.insert(parts, zoneName)
+    end
+
+    if antiquityData.HasLead and antiquityData:HasLead() then
+        local timeRemaining = SafeGetLeadExpiryDisplayText(antiquityData)
+        if timeRemaining and timeRemaining ~= "" then
+            table.insert(parts, "Expires: " .. timeRemaining)
+        else
+            table.insert(parts, "Lead active")
+        end
+    elseif LO.IsGreenAlwaysAvailable(antiquityData) then
+        table.insert(parts, "Always available")
+    end
+
+    if antiquityData.MeetsScryingSkillRequirements and not antiquityData:MeetsScryingSkillRequirements() then
+        table.insert(parts, "Scrying skill too low")
+    end
+
+    if antiquityData.IsInProgress and antiquityData:IsInProgress() then
+        table.insert(parts, "In progress")
+    end
+
+    return table.concat(parts, " · ")
+end
+
 function LO.RefreshAntiquityLists()
     LO.ApplySubcategoryFilter()
     LO.SortActiveLeadSections()
     if ADM then
         ADM:RefreshAll()
     end
+    zo_callLater(function()
+        if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
+            LO.RefreshPanelLeadList()
+        end
+    end, 100)
 end
 
 function LO.InstallHooks()
@@ -153,120 +377,6 @@ function LO.InstallHooks()
     end
     LO.ApplySubcategoryFilter()
     LO.RefreshAntiquityLists()
-end
-
-local function FormatAntiquityStatus(antiquityData)
-    local parts = {}
-    local zoneName = GetZoneNameById(antiquityData:GetZoneId())
-    if zoneName and zoneName ~= "" then
-        table.insert(parts, zoneName)
-    end
-
-    if antiquityData:HasLead() then
-        local _, timeRemaining = antiquityData:GetLeadExpirationStatus()
-        if timeRemaining and timeRemaining ~= "" then
-            table.insert(parts, "Expires: " .. timeRemaining)
-        else
-            table.insert(parts, "Lead active")
-        end
-    elseif LO.IsGreenAlwaysAvailable(antiquityData) then
-        table.insert(parts, "Always available (green)")
-    else
-        table.insert(parts, "No lead owned")
-    end
-
-    if not antiquityData:MeetsScryingSkillRequirements() then
-        table.insert(parts, "Scrying skill too low")
-    end
-
-    if LO.HasCompletedBefore(antiquityData) then
-        table.insert(parts, "Completed before")
-    end
-
-    if antiquityData:IsInProgress() then
-        table.insert(parts, "In progress")
-    end
-
-    return table.concat(parts, " · ")
-end
-
-function LO.UpdateSearchStatusLabel()
-    local statusLabel = LO.searchStatusLabel
-    if not statusLabel then
-        return
-    end
-
-    local searchText = ADM:GetSearch() or ""
-    if zo_strlen(searchText) < 2 then
-        statusLabel:SetHidden(true)
-        return
-    end
-
-    local results = ADM:GetSearchResults()
-    local unownedCount = 0
-    for _, antiquityId in ipairs(results) do
-        local antiquityData = ADM:GetAntiquityData(antiquityId)
-        if antiquityData and not antiquityData:HasLead() then
-            unownedCount = unownedCount + 1
-        end
-    end
-
-    statusLabel:SetText(string.format(
-        "Search: %d result(s) — %d without lead on this character",
-        #results,
-        unownedCount
-    ))
-    statusLabel:SetHidden(false)
-end
-
-function LO.RefreshResultsBody()
-    local body = LO.resultsBodyLabel
-    if not body then
-        return
-    end
-
-    local searchText = ADM:GetSearch() or ""
-    if zo_strlen(searchText) < 2 then
-        body:SetText("Type at least 2 characters to search. Results list antiquities you do not currently have a lead for.")
-        LO.UpdateSearchStatusLabel()
-        return
-    end
-
-    local results = ADM:GetSearchResults()
-    local lines = {}
-    local count = 0
-    local totalNoLead = 0
-
-    for _, antiquityId in ipairs(results) do
-        local antiquityData = ADM:GetAntiquityData(antiquityId)
-        if antiquityData and not antiquityData:HasLead() then
-            totalNoLead = totalNoLead + 1
-            if count < MAX_RESULT_LINES then
-                local qualityColor = GetAntiquityQualityColor(antiquityData:GetQuality())
-                local plainName = StripGenderSuffix(antiquityData:GetName())
-                local name = qualityColor:Colorize(plainName)
-                table.insert(lines, string.format("• %s — %s", name, FormatAntiquityStatus(antiquityData)))
-                count = count + 1
-            end
-        end
-    end
-
-    if totalNoLead == 0 then
-        body:SetText("No matching antiquities without a lead, or search still loading.")
-    else
-        local text = table.concat(lines, "\n")
-        if totalNoLead > MAX_RESULT_LINES then
-            text = text .. string.format("\n… and %d more without a lead (truncated)", totalNoLead - MAX_RESULT_LINES)
-        end
-        body:SetText(text)
-    end
-
-    LO.UpdateSearchStatusLabel()
-end
-
-function LO.OnSearchResultsUpdated()
-    LO.lastAnnouncedSearch = nil
-    LO.RefreshResultsBody()
 end
 
 function LO.OnSortSelected(_, _, entry)
@@ -334,27 +444,6 @@ function LO.SyncWindowControlsFromSettings()
     LO.SetCheckButtonState(LO.showDoneToggle, GetSettings().showCompletedBefore)
 end
 
-function LO.CommitSearchFromEdit()
-    if not LO.searchEditBox or not ADM then
-        return
-    end
-    local text = LO.searchEditBox:GetText() or ""
-    ADM:SetSearch(text)
-    LO.lastAnnouncedSearch = nil
-    LO.RefreshResultsBody()
-end
-
-function LO.OnSearchEditTextChanged()
-    searchDebounceGeneration = searchDebounceGeneration + 1
-    local generation = searchDebounceGeneration
-    zo_callLater(function()
-        if generation ~= searchDebounceGeneration then
-            return
-        end
-        LO.CommitSearchFromEdit()
-    end, SEARCH_DEBOUNCE_MS)
-end
-
 function LO.BuildSettingsMenu()
     if not LibAddonMenu2 then
         return
@@ -373,12 +462,12 @@ function LO.BuildSettingsMenu()
     local options = {
         {
             type = "description",
-            text = "Open the panel with |c00FFFF/leadsorg|r or assign a key in Controls → Keybindings → General.",
+            text = "Open the panel with |c00FFFF/leadsorg|r or assign a key in Controls → Keybindings → General. Use the Antiquities journal search when you need text search.",
         },
         {
             type = "dropdown",
             name = "Sort active leads by",
-            tooltip = "Applies to Active Leads lists in the Scryable antiquities journal.",
+            tooltip = "Applies to Active Leads lists in the Scryable antiquities journal and to this panel.",
             choices = { LO.SORT_LABELS[LO.SORT_ZONE], LO.SORT_LABELS[LO.SORT_EXPIRY], LO.SORT_LABELS[LO.SORT_NAME] },
             choicesValues = { LO.SORT_ZONE, LO.SORT_EXPIRY, LO.SORT_NAME },
             getFunc = function() return GetSettings().sortMode end,
@@ -466,31 +555,17 @@ function LO.InitializeWindow()
         LO.showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
     end
 
-    local searchBackdrop = LO.window:GetNamedChild("SearchBackdrop")
-    LO.searchEditBox = searchBackdrop and searchBackdrop:GetNamedChild("Box")
-    if LO.searchEditBox then
-        LO.searchEditBox:SetHandler("OnTextChanged", function()
-            LO.OnSearchEditTextChanged()
-        end)
-    end
-
-    LO.searchStatusLabel = LO.window:GetNamedChild("SearchStatus")
-    local resultsBackdrop = LO.window:GetNamedChild("ResultsBackdrop")
-    LO.resultsBodyLabel = resultsBackdrop and resultsBackdrop:GetNamedChild("Body")
+    LO.SetupResultsScrollList()
 
     local fragment = ZO_FadeSceneFragment:New(LO.window)
     LO.scene = ZO_Scene:New(LO.SCENE_NAME, SCENE_MANAGER)
     LO.scene:AddFragment(fragment)
-    SCENE_MANAGER:AddScene(LO.scene)
+    SCENE_MANAGER:Add(LO.scene)
 
     LO.scene:RegisterCallback("StateChange", function(oldState, newState)
         if newState == SCENE_SHOWN then
             LO.SyncWindowControlsFromSettings()
-            if LO.searchEditBox then
-                LO.searchEditBox:SetText(ADM:GetSearch() or "")
-            end
             LO.RefreshAntiquityLists()
-            LO.RefreshResultsBody()
         end
     end)
 end
@@ -517,8 +592,6 @@ function LO.Initialize()
     LO.InstallHooks()
     LO.InitializeWindow()
 
-    ADM:RegisterCallback("UpdateSearchResults", LO.OnSearchResultsUpdated)
-
     EM:RegisterForEvent(LO.name, EVENT_ANTIQUITY_UPDATED, function()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
@@ -527,9 +600,6 @@ function LO.Initialize()
     end)
     EM:RegisterForEvent(LO.name, EVENT_SKILL_RANK_UPDATE, function()
         zo_callLater(LO.RefreshAntiquityLists, 50)
-        if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
-            zo_callLater(LO.RefreshResultsBody, 100)
-        end
     end)
 
     SLASH_COMMANDS["/leadsorg"] = function()
@@ -539,9 +609,6 @@ function LO.Initialize()
     SLASH_COMMANDS["/leadsorganizer"] = function(arg)
         if arg == "refresh" then
             LO.RefreshAntiquityLists()
-            if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
-                LO.RefreshResultsBody()
-            end
             d("Leads Organizer: refreshed.")
         else
             LO.ToggleWindow()
