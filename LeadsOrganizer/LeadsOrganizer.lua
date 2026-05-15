@@ -8,7 +8,7 @@ LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.2.2"
+LO.version = "1.2.5"
 LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
@@ -29,6 +29,7 @@ local DEFAULT_SETTINGS = {
     showGreenAlwaysAvailable = true,
     showCompletedBefore = true,
     hideAboveScryingSkill = false,
+    currentZoneOnly = false,
 }
 
 local NO_EXPIRY_SORT_VALUE = 999999999
@@ -95,6 +96,67 @@ local function GetSettings()
     return LO.settings
 end
 
+--- Player zone id (stable); prefer ZOS helper over raw unit index when available.
+local function GetPlayerCurrentZoneId()
+    if ZO_ExplorationUtils_GetPlayerCurrentZoneId then
+        local z = ZO_ExplorationUtils_GetPlayerCurrentZoneId()
+        if z and z ~= 0 then
+            return z
+        end
+    end
+    local zoneIndex = GetUnitZoneIndex("player")
+    if not zoneIndex then
+        return nil
+    end
+    return GetZoneId(zoneIndex)
+end
+
+--- Zone for an antiquity/lead row (object or light table). Uses global GetAntiquityZoneId(number id) when needed — do not name this GetAntiquityZoneId (global name clash).
+local function GetLeadObjectZoneId(antiquityData)
+    if antiquityData.GetZoneId then
+        local ok, z = pcall(function()
+            return antiquityData:GetZoneId()
+        end)
+        if ok and z then
+            return z
+        end
+    end
+    if antiquityData.zoneId then
+        return antiquityData.zoneId
+    end
+    local id = antiquityData.GetId and antiquityData:GetId() or antiquityData.antiquityId
+    if id and GetAntiquityZoneId then
+        local ok, z = pcall(function()
+            return GetAntiquityZoneId(id)
+        end)
+        if ok and z then
+            return z
+        end
+    end
+    return nil
+end
+
+--- "Current zone only" is strict: antiquities with zone 0 / unknown (anywhere) are hidden when the filter is on.
+local function LeadObjectMatchesCurrentZoneFilter(antiquityData)
+    if antiquityData.IsInCurrentPlayerZone then
+        local ok, matches = pcall(function()
+            return antiquityData:IsInCurrentPlayerZone()
+        end)
+        if ok and not matches then
+            return false
+        end
+    end
+    local pZone = GetPlayerCurrentZoneId()
+    if not pZone then
+        return false
+    end
+    local aZone = GetLeadObjectZoneId(antiquityData)
+    if not aZone or aZone == 0 then
+        return false
+    end
+    return aZone == pZone
+end
+
 function LO.IsGreenAlwaysAvailable(antiquityData)
     if antiquityData.RequiresLead then
         return not antiquityData:RequiresLead()
@@ -126,6 +188,9 @@ function LO.AntiquityPassesFilters(antiquityData)
     if not settings.showCompletedBefore and LO.HasCompletedBefore(antiquityData) then
         return false
     end
+    if settings.currentZoneOnly and not LeadObjectMatchesCurrentZoneFilter(antiquityData) then
+        return false
+    end
     return true
 end
 
@@ -150,13 +215,6 @@ local function GetLeadSortTime(antiquityData)
     return leadTime
 end
 
-local function GetAntiquityZoneId(antiquityData)
-    if antiquityData.GetZoneId then
-        return antiquityData:GetZoneId()
-    end
-    return antiquityData.zoneId
-end
-
 local function CompareAntiquityNames(left, right)
     if left.CompareNameTo and right.CompareNameTo then
         return left:CompareNameTo(right)
@@ -167,8 +225,10 @@ local function CompareAntiquityNames(left, right)
 end
 
 function LO.SortByZone(leftAntiquityData, rightAntiquityData)
-    local leftZone = GetZoneNameById(GetAntiquityZoneId(leftAntiquityData)) or ""
-    local rightZone = GetZoneNameById(GetAntiquityZoneId(rightAntiquityData)) or ""
+    local lz = GetLeadObjectZoneId(leftAntiquityData)
+    local rz = GetLeadObjectZoneId(rightAntiquityData)
+    local leftZone = (lz and GetZoneNameById(lz)) or ""
+    local rightZone = (rz and GetZoneNameById(rz)) or ""
     if leftZone ~= rightZone then
         return leftZone < rightZone
     end
@@ -329,8 +389,8 @@ end
 
 function LO.FormatLeadLineDetail(antiquityData)
     local parts = {}
-    local zoneId = antiquityData.GetZoneId and antiquityData:GetZoneId() or antiquityData.zoneId
-    local zoneName = zoneId and GetZoneNameById(zoneId) or nil
+    local zoneId = GetLeadObjectZoneId(antiquityData)
+    local zoneName = (zoneId and zoneId ~= 0) and GetZoneNameById(zoneId) or nil
     if zoneName and zoneName ~= "" then
         table.insert(parts, zoneName)
     end
@@ -426,6 +486,12 @@ function LO.OnShowDoneToggled(control, button, upInside)
     LO.RefreshAntiquityLists()
 end
 
+function LO.OnCurrentZoneOnlyToggled(control, button, upInside)
+    ZO_CheckButton_OnClicked(control)
+    GetSettings().currentZoneOnly = ZO_CheckButton_IsChecked(control)
+    LO.RefreshAntiquityLists()
+end
+
 function LO.SetCheckButtonState(button, checked)
     if not button then
         return
@@ -442,6 +508,7 @@ function LO.SyncWindowControlsFromSettings()
     LO.SetCheckButtonState(LO.hideScryingToggle, GetSettings().hideAboveScryingSkill)
     LO.SetCheckButtonState(LO.showGreenToggle, GetSettings().showGreenAlwaysAvailable)
     LO.SetCheckButtonState(LO.showDoneToggle, GetSettings().showCompletedBefore)
+    LO.SetCheckButtonState(LO.currentZoneOnlyToggle, GetSettings().currentZoneOnly)
 end
 
 function LO.BuildSettingsMenu()
@@ -514,6 +581,18 @@ function LO.BuildSettingsMenu()
             end,
             default = DEFAULT_SETTINGS.showCompletedBefore,
         },
+        {
+            type = "checkbox",
+            name = "Show leads in current zone only",
+            tooltip = "When enabled, only antiquities tied to a specific zone that matches where you are now are listed. Uses the same player zone as the game UI. Entries with no fixed zone (zone 0) are hidden while this is on. Also updates All Active Leads in the journal.",
+            getFunc = function() return GetSettings().currentZoneOnly end,
+            setFunc = function(value)
+                GetSettings().currentZoneOnly = value
+                LO.SyncWindowControlsFromSettings()
+                LO.RefreshAntiquityLists()
+            end,
+            default = DEFAULT_SETTINGS.currentZoneOnly,
+        },
     }
 
     LibAddonMenu2:RegisterAddonPanel("LeadsOrganizerOptions", panelData)
@@ -537,13 +616,19 @@ function LO.InitializeWindow()
     LO.sortDropdown = sortDropdownControl and ZO_ComboBox_ObjectFromContainer(sortDropdownControl)
     LO.SetupSortDropdown(LO.sortDropdown)
 
-    LO.hideScryingToggle = LO.window:GetNamedChild("HideScryingToggle")
-    LO.showGreenToggle = LO.window:GetNamedChild("ShowGreenToggle")
-    LO.showDoneToggle = LO.window:GetNamedChild("ShowDoneToggle")
+    local function filterRowToggle(rowName, toggleName)
+        local row = LO.window:GetNamedChild(rowName)
+        return row and row:GetNamedChild(toggleName)
+    end
+    LO.hideScryingToggle = filterRowToggle("FilterRowHideScrying", "HideScryingToggle")
+    LO.showGreenToggle = filterRowToggle("FilterRowShowGreen", "ShowGreenToggle")
+    LO.showDoneToggle = filterRowToggle("FilterRowShowDone", "ShowDoneToggle")
+    LO.currentZoneOnlyToggle = filterRowToggle("FilterRowCurrentZone", "CurrentZoneOnlyToggle")
 
     LO.SetCheckButtonState(LO.hideScryingToggle, GetSettings().hideAboveScryingSkill)
     LO.SetCheckButtonState(LO.showGreenToggle, GetSettings().showGreenAlwaysAvailable)
     LO.SetCheckButtonState(LO.showDoneToggle, GetSettings().showCompletedBefore)
+    LO.SetCheckButtonState(LO.currentZoneOnlyToggle, GetSettings().currentZoneOnly)
 
     if LO.hideScryingToggle then
         LO.hideScryingToggle:SetHandler("OnClicked", LO.OnHideScryingToggled)
@@ -553,6 +638,9 @@ function LO.InitializeWindow()
     end
     if LO.showDoneToggle then
         LO.showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
+    end
+    if LO.currentZoneOnlyToggle then
+        LO.currentZoneOnlyToggle:SetHandler("OnClicked", LO.OnCurrentZoneOnlyToggled)
     end
 
     LO.SetupResultsScrollList()
@@ -599,6 +687,9 @@ function LO.Initialize()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
     EM:RegisterForEvent(LO.name, EVENT_SKILL_RANK_UPDATE, function()
+        zo_callLater(LO.RefreshAntiquityLists, 50)
+    end)
+    EM:RegisterForEvent(LO.name, EVENT_PLAYER_ACTIVATED, function()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
 

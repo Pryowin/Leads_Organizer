@@ -1,8 +1,8 @@
 ## Title: Leads Organizer
 ## Description: Filter and sort scrying leads. Dedicated panel (/leadsorg) + keybind.
-## Version: 1.2.2
+## Version: 1.2.5
 ## APIVersion: 101049 101050
-## AddOnVersion: 102020
+## AddOnVersion: 102023
 ## Author: ESO Community
 ## SavedVariables: LeadsOrganizer_SavedVariables
 

@@ -36,32 +36,65 @@
                     <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
                 </Control>
 
-                <Button name="$(parent)HideScryingToggle" inherits="ZO_CheckButton">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortDropdown" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="14" />
-                </Button>
-                <Label name="$(parent)HideScryingLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Hide if Scrying skill is too low for this lead" wrapMode="WRAP">
-                    <Dimensions x="500" y="0" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)HideScryingToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
-                </Label>
+                <!-- Fixed-height rows: checkbox left, label fills the row (no backdrop corner anchors). -->
+                <Control name="$(parent)FilterRowHideScrying">
+                    <Dimensions x="508" y="42" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortDropdown" relativePoint="BOTTOMLEFT" offsetX="8" offsetY="8" />
+                    <Controls>
+                        <Button name="$(parent)HideScryingToggle" inherits="ZO_CheckButton">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
+                        </Button>
+                        <Label name="$(parent)HideScryingLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Hide if Scrying skill is too low for this lead" wrapMode="WRAP" maxLineCount="2" verticalAlignment="TOP">
+                            <Anchor point="TOPLEFT" relativeTo="$(parent)HideScryingToggle" relativePoint="TOPRIGHT" offsetX="6" offsetY="-2" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-4" offsetY="-4" />
+                        </Label>
+                    </Controls>
+                </Control>
 
-                <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)HideScryingLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="10" />
-                </Button>
-                <Label name="$(parent)ShowGreenLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show green always-available zone leads" wrapMode="WRAP">
-                    <Dimensions x="500" y="0" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
-                </Label>
+                <Control name="$(parent)FilterRowShowGreen">
+                    <Dimensions x="508" y="42" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowHideScrying" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Controls>
+                        <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
+                        </Button>
+                        <Label name="$(parent)ShowGreenLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show green always-available zone leads" wrapMode="WRAP" maxLineCount="2" verticalAlignment="TOP">
+                            <Anchor point="TOPLEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="TOPRIGHT" offsetX="6" offsetY="-2" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-4" offsetY="-4" />
+                        </Label>
+                    </Controls>
+                </Control>
 
-                <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowGreenLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="10" />
-                </Button>
-                <Label name="$(parent)ShowDoneLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show leads completed before on this character" wrapMode="WRAP">
-                    <Dimensions x="500" y="0" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
-                </Label>
+                <Control name="$(parent)FilterRowShowDone">
+                    <Dimensions x="508" y="42" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowShowGreen" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Controls>
+                        <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
+                        </Button>
+                        <Label name="$(parent)ShowDoneLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show leads completed before on this character" wrapMode="WRAP" maxLineCount="2" verticalAlignment="TOP">
+                            <Anchor point="TOPLEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="TOPRIGHT" offsetX="6" offsetY="-2" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-4" offsetY="-4" />
+                        </Label>
+                    </Controls>
+                </Control>
+
+                <Control name="$(parent)FilterRowCurrentZone">
+                    <Dimensions x="508" y="42" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowShowDone" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Controls>
+                        <Button name="$(parent)CurrentZoneOnlyToggle" inherits="ZO_CheckButton">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
+                        </Button>
+                        <Label name="$(parent)CurrentZoneOnlyLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show leads in current zone only" wrapMode="WRAP" maxLineCount="2" verticalAlignment="TOP">
+                            <Anchor point="TOPLEFT" relativeTo="$(parent)CurrentZoneOnlyToggle" relativePoint="TOPRIGHT" offsetX="6" offsetY="-2" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-4" offsetY="-4" />
+                        </Label>
+                    </Controls>
+                </Control>
 
                 <Label name="$(parent)ResultsHeader" font="ZoFontGameBold" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Active leads (matches journal filters):">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowDoneLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="16" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowCurrentZone" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="10" />
                 </Label>
 
                 <Backdrop name="$(parent)ResultsBackdrop" inherits="ZO_DefaultBackdrop">
