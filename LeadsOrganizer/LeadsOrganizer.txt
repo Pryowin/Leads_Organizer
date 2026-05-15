@@ -1,12 +1,13 @@
 ## Title: Leads Organizer
-## Description: Filter, sort, and search scrying leads in the Antiquities journal.
-## Version: 1.0.0
+## Description: Filter, sort, and search scrying leads. Dedicated panel (/leadsorg) + keybind.
+## Version: 1.1.0
 ## APIVersion: 101049 101050
-## AddOnVersion: 100000
+## AddOnVersion: 101000
 ## Author: ESO Community
 ## SavedVariables: LeadsOrganizer_SavedVariables
 
 LeadsOrganizer.xml
+Bindings.xml
 LeadsOrganizer.lua
 
 ## OptionalDependsOn: LibAddonMenu-2.0

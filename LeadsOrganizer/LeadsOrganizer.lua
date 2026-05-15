@@ -1,15 +1,16 @@
 --[[
     Leads Organizer — filter, sort, and search scrying leads.
+    Dedicated panel: /leadsorg or keybind (Controls → Keybindings → General).
 ]]
 
 LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.0.0"
+LO.version = "1.1.0"
+LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
-local WM = WINDOW_MANAGER
 local ADM = ANTIQUITY_DATA_MANAGER
 
 LO.SORT_ZONE = 1
@@ -26,9 +27,13 @@ local DEFAULT_SETTINGS = {
     sortMode = LO.SORT_EXPIRY,
     showGreenAlwaysAvailable = true,
     showCompletedBefore = true,
+    hideAboveScryingSkill = false,
 }
 
 local NO_EXPIRY_SORT_VALUE = 999999999
+local SEARCH_DEBOUNCE_MS = 250
+local MAX_RESULT_LINES = 45
+local searchDebounceGeneration = 0
 
 local function StripGenderSuffix(text)
     if not text or text == "" then
@@ -42,7 +47,6 @@ local function GetSettings()
 end
 
 function LO.IsGreenAlwaysAvailable(antiquityData)
-    -- Zone starter leads that do not require discovering a lead first.
     return not antiquityData:RequiresLead()
 end
 
@@ -52,6 +56,9 @@ end
 
 function LO.AntiquityPassesFilters(antiquityData)
     local settings = GetSettings()
+    if settings.hideAboveScryingSkill and not antiquityData:MeetsScryingSkillRequirements() then
+        return false
+    end
     if not settings.showGreenAlwaysAvailable and LO.IsGreenAlwaysAvailable(antiquityData) then
         return false
     end
@@ -168,6 +175,10 @@ local function FormatAntiquityStatus(antiquityData)
         table.insert(parts, "No lead owned")
     end
 
+    if not antiquityData:MeetsScryingSkillRequirements() then
+        table.insert(parts, "Scrying skill too low")
+    end
+
     if LO.HasCompletedBefore(antiquityData) then
         table.insert(parts, "Completed before")
     end
@@ -179,7 +190,7 @@ local function FormatAntiquityStatus(antiquityData)
     return table.concat(parts, " · ")
 end
 
-function LO.UpdateSearchStatus()
+function LO.UpdateSearchStatusLabel()
     local statusLabel = LO.searchStatusLabel
     if not statusLabel then
         return
@@ -201,46 +212,61 @@ function LO.UpdateSearchStatus()
     end
 
     statusLabel:SetText(string.format(
-        "Search: %d result(s) — %d without lead",
+        "Search: %d result(s) — %d without lead on this character",
         #results,
         unownedCount
     ))
     statusLabel:SetHidden(false)
 end
 
-function LO.OnSearchResultsUpdated()
-    LO.UpdateSearchStatus()
+function LO.RefreshResultsBody()
+    local body = LO.resultsBodyLabel
+    if not body then
+        return
+    end
 
     local searchText = ADM:GetSearch() or ""
     if zo_strlen(searchText) < 2 then
-        LO.lastAnnouncedSearch = nil
+        body:SetText("Type at least 2 characters to search. Results list antiquities you do not currently have a lead for.")
+        LO.UpdateSearchStatusLabel()
         return
     end
-
-    if LO.lastAnnouncedSearch == searchText then
-        return
-    end
-    LO.lastAnnouncedSearch = searchText
 
     local results = ADM:GetSearchResults()
-    if #results == 0 then
-        return
-    end
+    local lines = {}
+    local count = 0
+    local totalNoLead = 0
 
-    local announced = 0
     for _, antiquityId in ipairs(results) do
         local antiquityData = ADM:GetAntiquityData(antiquityId)
         if antiquityData and not antiquityData:HasLead() then
-            local qualityColor = GetAntiquityQualityColor(antiquityData:GetQuality())
-            local name = qualityColor:Colorize(StripGenderSuffix(antiquityData:GetName()))
-            d(string.format("|cB8B8D8Leads Organizer|r — %s — %s", name, FormatAntiquityStatus(antiquityData)))
-            announced = announced + 1
-            if announced >= 12 then
-                d("|cB8B8D8Leads Organizer|r — (additional matches omitted)")
-                break
+            totalNoLead = totalNoLead + 1
+            if count < MAX_RESULT_LINES then
+                local qualityColor = GetAntiquityQualityColor(antiquityData:GetQuality())
+                local plainName = StripGenderSuffix(antiquityData:GetName())
+                local name = qualityColor:Colorize(plainName)
+                table.insert(lines, string.format("• %s — %s", name, FormatAntiquityStatus(antiquityData)))
+                count = count + 1
             end
         end
     end
+
+    if totalNoLead == 0 then
+        body:SetText("No matching antiquities without a lead, or search still loading.")
+    else
+        local text = table.concat(lines, "\n")
+        if totalNoLead > MAX_RESULT_LINES then
+            text = text .. string.format("\n… and %d more without a lead (truncated)", totalNoLead - MAX_RESULT_LINES)
+        end
+        body:SetText(text)
+    end
+
+    LO.UpdateSearchStatusLabel()
+end
+
+function LO.OnSearchResultsUpdated()
+    LO.lastAnnouncedSearch = nil
+    LO.RefreshResultsBody()
 end
 
 function LO.OnSortSelected(_, _, entry)
@@ -272,22 +298,61 @@ function LO.SetupSortDropdown(dropdown)
     end
 end
 
-function LO.OnShowGreenToggled(control)
+function LO.OnHideScryingToggled(control, button, upInside)
+    ZO_CheckButton_OnClicked(control)
+    GetSettings().hideAboveScryingSkill = ZO_CheckButton_IsChecked(control)
+    LO.RefreshAntiquityLists()
+end
+
+function LO.OnShowGreenToggled(control, button, upInside)
+    ZO_CheckButton_OnClicked(control)
     GetSettings().showGreenAlwaysAvailable = ZO_CheckButton_IsChecked(control)
     LO.RefreshAntiquityLists()
 end
 
-function LO.OnShowDoneToggled(control)
+function LO.OnShowDoneToggled(control, button, upInside)
+    ZO_CheckButton_OnClicked(control)
     GetSettings().showCompletedBefore = ZO_CheckButton_IsChecked(control)
     LO.RefreshAntiquityLists()
 end
 
 function LO.SetCheckButtonState(button, checked)
+    if not button then
+        return
+    end
     if checked then
         ZO_CheckButton_SetChecked(button)
     else
         ZO_CheckButton_SetUnchecked(button)
     end
+end
+
+function LO.SyncWindowControlsFromSettings()
+    LO.SetupSortDropdown(LO.sortDropdown)
+    LO.SetCheckButtonState(LO.hideScryingToggle, GetSettings().hideAboveScryingSkill)
+    LO.SetCheckButtonState(LO.showGreenToggle, GetSettings().showGreenAlwaysAvailable)
+    LO.SetCheckButtonState(LO.showDoneToggle, GetSettings().showCompletedBefore)
+end
+
+function LO.CommitSearchFromEdit()
+    if not LO.searchEditBox or not ADM then
+        return
+    end
+    local text = LO.searchEditBox:GetText() or ""
+    ADM:SetSearch(text)
+    LO.lastAnnouncedSearch = nil
+    LO.RefreshResultsBody()
+end
+
+function LO.OnSearchEditTextChanged()
+    searchDebounceGeneration = searchDebounceGeneration + 1
+    local generation = searchDebounceGeneration
+    zo_callLater(function()
+        if generation ~= searchDebounceGeneration then
+            return
+        end
+        LO.CommitSearchFromEdit()
+    end, SEARCH_DEBOUNCE_MS)
 end
 
 function LO.BuildSettingsMenu()
@@ -307,6 +372,10 @@ function LO.BuildSettingsMenu()
 
     local options = {
         {
+            type = "description",
+            text = "Open the panel with |c00FFFF/leadsorg|r or assign a key in Controls → Keybindings → General.",
+        },
+        {
             type = "dropdown",
             name = "Sort active leads by",
             tooltip = "Applies to Active Leads lists in the Scryable antiquities journal.",
@@ -315,9 +384,22 @@ function LO.BuildSettingsMenu()
             getFunc = function() return GetSettings().sortMode end,
             setFunc = function(value)
                 GetSettings().sortMode = value
+                LO.SyncWindowControlsFromSettings()
                 LO.RefreshAntiquityLists()
             end,
             default = DEFAULT_SETTINGS.sortMode,
+        },
+        {
+            type = "checkbox",
+            name = "Hide leads this character cannot scry (skill)",
+            tooltip = "Hides antiquities that require a higher Scrying skill than this character currently has.",
+            getFunc = function() return GetSettings().hideAboveScryingSkill end,
+            setFunc = function(value)
+                GetSettings().hideAboveScryingSkill = value
+                LO.SyncWindowControlsFromSettings()
+                LO.RefreshAntiquityLists()
+            end,
+            default = DEFAULT_SETTINGS.hideAboveScryingSkill,
         },
         {
             type = "checkbox",
@@ -326,9 +408,7 @@ function LO.BuildSettingsMenu()
             getFunc = function() return GetSettings().showGreenAlwaysAvailable end,
             setFunc = function(value)
                 GetSettings().showGreenAlwaysAvailable = value
-                if LO.showGreenToggle then
-                    LO.SetCheckButtonState(LO.showGreenToggle, value)
-                end
+                LO.SyncWindowControlsFromSettings()
                 LO.RefreshAntiquityLists()
             end,
             default = DEFAULT_SETTINGS.showGreenAlwaysAvailable,
@@ -340,9 +420,7 @@ function LO.BuildSettingsMenu()
             getFunc = function() return GetSettings().showCompletedBefore end,
             setFunc = function(value)
                 GetSettings().showCompletedBefore = value
-                if LO.showDoneToggle then
-                    LO.SetCheckButtonState(LO.showDoneToggle, value)
-                end
+                LO.SyncWindowControlsFromSettings()
                 LO.RefreshAntiquityLists()
             end,
             default = DEFAULT_SETTINGS.showCompletedBefore,
@@ -353,94 +431,91 @@ function LO.BuildSettingsMenu()
     LibAddonMenu2:RegisterOptionControls("LeadsOrganizerOptions", options)
 end
 
-function LO.CreateJournalBar()
-    if LO.barControl or not ZO_AntiquityJournal_Keyboard_TopLevelContents then
+function LO.InitializeWindow()
+    LO.window = LeadsOrganizerWindowTopLevel
+    if not LO.window then
         return
     end
 
-    local parent = ZO_AntiquityJournal_Keyboard_TopLevelContents
-    local searchControl = parent:GetNamedChild("Search")
-    if not searchControl then
-        zo_callLater(LO.CreateJournalBar, 500)
-        return
-    end
-
-    local bar = CreateControlFromVirtual("LeadsOrganizerBarInstance", parent, "LeadsOrganizerBar")
-    if not bar then
-        return
-    end
-
-    bar:SetAnchor(BOTTOMLEFT, searchControl, TOPLEFT, 0, -8)
-    bar:SetAnchor(BOTTOMRIGHT, searchControl, TOPRIGHT, 0, -8)
-    LO.barControl = bar
-
-    local sortDropdownControl = bar:GetNamedChild("SortDropdown")
-    local sortDropdown = sortDropdownControl and ZO_ComboBox_ObjectFromContainer(sortDropdownControl)
-    if sortDropdown then
-        LO.sortDropdown = sortDropdown
-        LO.SetupSortDropdown(sortDropdown)
-    end
-
-    local showGreenToggle = bar:GetNamedChild("ShowGreenToggle")
-    if showGreenToggle then
-        LO.showGreenToggle = showGreenToggle
-        LO.SetCheckButtonState(showGreenToggle, GetSettings().showGreenAlwaysAvailable)
-        showGreenToggle:SetHandler("OnClicked", LO.OnShowGreenToggled)
-    end
-
-    local showDoneToggle = bar:GetNamedChild("ShowDoneToggle")
-    if showDoneToggle then
-        LO.showDoneToggle = showDoneToggle
-        LO.SetCheckButtonState(showDoneToggle, GetSettings().showCompletedBefore)
-        showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
-    end
-
-    LO.searchStatusLabel = bar:GetNamedChild("SearchStatus")
-end
-
-function LO.HookJournalSearch()
-  if not ANTIQUITY_JOURNAL_KEYBOARD or LO.searchHooked then
-        return
-    end
-
-    local journal = ANTIQUITY_JOURNAL_KEYBOARD
-    if journal.contentSearchEditBox then
-        local originalHandler = journal.contentSearchEditBox:GetHandler("OnTextChanged")
-        journal.contentSearchEditBox:SetHandler("OnTextChanged", function(control)
-            if originalHandler then
-                originalHandler(control)
-            end
-            zo_callLater(LO.UpdateSearchStatus, 50)
+    local closeBtn = LO.window:GetNamedChild("Close")
+    if closeBtn then
+        closeBtn:SetHandler("OnClicked", function()
+            LO.ToggleWindow()
         end)
     end
 
-    LO.searchHooked = true
-end
+    local sortDropdownControl = LO.window:GetNamedChild("SortDropdown")
+    LO.sortDropdown = sortDropdownControl and ZO_ComboBox_ObjectFromContainer(sortDropdownControl)
+    LO.SetupSortDropdown(LO.sortDropdown)
 
-function LO.OnAntiquityJournalShown()
-    LO.CreateJournalBar()
-    LO.UpdateSearchStatus()
-end
+    LO.hideScryingToggle = LO.window:GetNamedChild("HideScryingToggle")
+    LO.showGreenToggle = LO.window:GetNamedChild("ShowGreenToggle")
+    LO.showDoneToggle = LO.window:GetNamedChild("ShowDoneToggle")
 
-function LO.RegisterJournalSceneCallback()
-    local scene = SCENE_MANAGER:GetScene("antiquityJournalKeyboard")
-    if not scene then
-        zo_callLater(LO.RegisterJournalSceneCallback, 500)
-        return
+    LO.SetCheckButtonState(LO.hideScryingToggle, GetSettings().hideAboveScryingSkill)
+    LO.SetCheckButtonState(LO.showGreenToggle, GetSettings().showGreenAlwaysAvailable)
+    LO.SetCheckButtonState(LO.showDoneToggle, GetSettings().showCompletedBefore)
+
+    if LO.hideScryingToggle then
+        LO.hideScryingToggle:SetHandler("OnClicked", LO.OnHideScryingToggled)
     end
-    scene:RegisterCallback("StateChange", function(_, newState)
-        if newState == SCENE_SHOWING then
-            LO.OnAntiquityJournalShown()
+    if LO.showGreenToggle then
+        LO.showGreenToggle:SetHandler("OnClicked", LO.OnShowGreenToggled)
+    end
+    if LO.showDoneToggle then
+        LO.showDoneToggle:SetHandler("OnClicked", LO.OnShowDoneToggled)
+    end
+
+    local searchBackdrop = LO.window:GetNamedChild("SearchBackdrop")
+    LO.searchEditBox = searchBackdrop and searchBackdrop:GetNamedChild("Box")
+    if LO.searchEditBox then
+        LO.searchEditBox:SetHandler("OnTextChanged", function()
+            LO.OnSearchEditTextChanged()
+        end)
+    end
+
+    LO.searchStatusLabel = LO.window:GetNamedChild("SearchStatus")
+    local resultsBackdrop = LO.window:GetNamedChild("ResultsBackdrop")
+    LO.resultsBodyLabel = resultsBackdrop and resultsBackdrop:GetNamedChild("Body")
+
+    local fragment = ZO_FadeSceneFragment:New(LO.window)
+    LO.scene = ZO_Scene:New(LO.SCENE_NAME, SCENE_MANAGER)
+    LO.scene:AddFragment(fragment)
+    SCENE_MANAGER:AddScene(LO.scene)
+
+    LO.scene:RegisterCallback("StateChange", function(oldState, newState)
+        if newState == SCENE_SHOWN then
+            LO.SyncWindowControlsFromSettings()
+            if LO.searchEditBox then
+                LO.searchEditBox:SetText(ADM:GetSearch() or "")
+            end
+            LO.RefreshAntiquityLists()
+            LO.RefreshResultsBody()
         end
     end)
 end
 
+function LO.ToggleWindow()
+    if not LO.scene then
+        return
+    end
+    if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
+        SCENE_MANAGER:Hide(LO.SCENE_NAME)
+    else
+        SCENE_MANAGER:Show(LO.SCENE_NAME)
+    end
+end
+
+LeadsOrganizer.ToggleWindow = LO.ToggleWindow
+
 function LO.Initialize()
-    LO.settings = ZO_SavedVars:NewAccountWide("LeadsOrganizer_SavedVariables", 1, nil, DEFAULT_SETTINGS)
+    ZO_CreateStringId("SI_BINDING_NAME_LEADS_ORGANIZER_TOGGLE", "Toggle Leads Organizer")
+
+    LO.settings = ZO_SavedVars:NewAccountWide("LeadsOrganizer_SavedVariables", 2, nil, DEFAULT_SETTINGS)
 
     LO.BuildSettingsMenu()
     LO.InstallHooks()
-    LO.RegisterJournalSceneCallback()
+    LO.InitializeWindow()
 
     ADM:RegisterCallback("UpdateSearchResults", LO.OnSearchResultsUpdated)
 
@@ -450,18 +525,26 @@ function LO.Initialize()
     EM:RegisterForEvent(LO.name, EVENT_ANTIQUITY_LEAD_ACQUIRED, function()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
+    EM:RegisterForEvent(LO.name, EVENT_SKILL_RANK_UPDATE, function()
+        zo_callLater(LO.RefreshAntiquityLists, 50)
+        if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
+            zo_callLater(LO.RefreshResultsBody, 100)
+        end
+    end)
 
-    zo_callLater(function()
-        LO.CreateJournalBar()
-        LO.HookJournalSearch()
-    end, 1200)
+    SLASH_COMMANDS["/leadsorg"] = function()
+        LO.ToggleWindow()
+    end
 
     SLASH_COMMANDS["/leadsorganizer"] = function(arg)
         if arg == "refresh" then
             LO.RefreshAntiquityLists()
-            d("Leads Organizer: lists refreshed.")
+            if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
+                LO.RefreshResultsBody()
+            end
+            d("Leads Organizer: refreshed.")
         else
-            d("Leads Organizer — use the bar above Search in Antiquities, or Settings → Add-ons.")
+            LO.ToggleWindow()
         end
     end
 end
@@ -475,3 +558,9 @@ local function OnAddOnLoaded(_, addOnName)
 end
 
 EM:RegisterForEvent(LO.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
+
+function LeadsOrganizer_Keybind_Toggle()
+    if LeadsOrganizer and LeadsOrganizer.ToggleWindow then
+        LeadsOrganizer.ToggleWindow()
+    end
+end

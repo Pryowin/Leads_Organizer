@@ -1,37 +1,87 @@
 <GuiXml>
     <Controls>
-        <Control name="LeadsOrganizerBar" virtual="true" resizeToFitDescendents="true">
-            <Dimensions x="520" y="56" />
+        <TopLevelControl name="LeadsOrganizerWindowTopLevel" movable="true" clampedToScreen="true" mouseEnabled="true" hidden="true">
+            <Dimensions x="480" y="600" />
+            <Anchor point="CENTER" />
             <Controls>
-                <Label name="$(parent)SortLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Sort:">
-                    <Anchor point="TOPLEFT" offsetX="0" offsetY="0" />
+                <Backdrop name="$(parent)Backdrop" inherits="ZO_DefaultBackdrop">
+                    <Anchor point="TOPLEFT" />
+                    <Anchor point="BOTTOMRIGHT" />
+                </Backdrop>
+
+                <Button name="$(parent)Close" inherits="ZO_WindowCloseButton">
+                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" offsetX="-4" offsetY="4" />
+                </Button>
+
+                <Label name="$(parent)Title" font="ZoFontGameBold" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Leads Organizer">
+                    <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="16" offsetY="12" />
+                </Label>
+
+                <Label name="$(parent)SortLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Sort active leads:">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)Title" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="20" />
                 </Label>
                 <Control name="$(parent)SortDropdown" inherits="ZO_ComboBox">
-                    <Dimensions x="150" y="30" />
-                    <Anchor point="LEFT" relativeTo="$(parent)SortLabel" relativePoint="RIGHT" offsetX="8" offsetY="0" />
+                    <Dimensions x="220" y="30" />
+                    <Anchor point="LEFT" relativeTo="$(parent)SortLabel" relativePoint="RIGHT" offsetX="10" offsetY="-2" />
                 </Control>
+
+                <Button name="$(parent)HideScryingToggle" inherits="ZO_CheckButton">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="14" />
+                </Button>
+                <Label name="$(parent)HideScryingLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Hide leads this character cannot scry (skill level)" wrapMode="WRAP">
+                    <Dimensions x="400" y="40" />
+                    <Anchor point="LEFT" relativeTo="$(parent)HideScryingToggle" relativePoint="RIGHT" offsetX="6" offsetY="0" />
+                </Label>
+
                 <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
-                    <Anchor point="LEFT" relativeTo="$(parent)SortDropdown" relativePoint="RIGHT" offsetX="16" offsetY="0" />
-                    <OnClicked>
-                        ZO_CheckButton_OnClicked(...)
-                    </OnClicked>
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)HideScryingToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="28" />
                 </Button>
-                <Label name="$(parent)ShowGreenLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Green leads">
-                    <Anchor point="LEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
+                <Label name="$(parent)ShowGreenLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show green always-available leads">
+                    <Anchor point="LEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="RIGHT" offsetX="6" offsetY="0" />
                 </Label>
+
                 <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
-                    <Anchor point="LEFT" relativeTo="$(parent)ShowGreenLabel" relativePoint="RIGHT" offsetX="16" offsetY="0" />
-                    <OnClicked>
-                        ZO_CheckButton_OnClicked(...)
-                    </OnClicked>
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowGreenToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="10" />
                 </Button>
-                <Label name="$(parent)ShowDoneLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Done before">
-                    <Anchor point="LEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="RIGHT" offsetX="4" offsetY="0" />
+                <Label name="$(parent)ShowDoneLabel" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Show leads completed before">
+                    <Anchor point="LEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="RIGHT" offsetX="6" offsetY="0" />
                 </Label>
+
+                <Label name="$(parent)SearchHint" font="ZoFontGame" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Search (matches antiquities you may not have yet):">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)ShowDoneToggle" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="18" />
+                </Label>
+
+                <Backdrop name="$(parent)SearchBackdrop" inherits="ZO_SingleLineEditBackdrop_Keyboard">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SearchHint" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
+                    <Anchor point="TOPRIGHT" relativeTo="$(parent)Backdrop" relativePoint="TOPRIGHT" offsetX="-16" offsetY="0" />
+                    <Dimensions y="32" />
+                    <Controls>
+                        <EditBox name="$(parent)Box" inherits="ZO_DefaultEditForBackdrop" font="ZoFontGame" maxInputCharacters="80">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="8" offsetY="4" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-8" offsetY="-4" />
+                        </EditBox>
+                    </Controls>
+                </Backdrop>
+
                 <Label name="$(parent)SearchStatus" font="ZoFontGameSmall" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_DEFAULT" hidden="true">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SearchBackdrop" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="4" />
                 </Label>
+
+                <Label name="$(parent)ResultsHeader" font="ZoFontGameBold" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_SELECTED" text="Matches (no lead on this character):">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)SearchBackdrop" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="28" />
+                </Label>
+
+                <Backdrop name="$(parent)ResultsBackdrop" inherits="ZO_DefaultBackdrop">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)ResultsHeader" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
+                    <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)Backdrop" relativePoint="BOTTOMRIGHT" offsetX="-12" offsetY="-12" />
+                    <Controls>
+                        <Label name="$(parent)Body" font="ZoFontGameSmall" color="INTERFACE_COLOR_TYPE_TEXT_COLORS:INTERFACE_TEXT_COLOR_DEFAULT" verticalAlignment="TOP" horizontalAlignment="LEFT" wrapMode="WRAP">
+                            <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="8" offsetY="8" />
+                            <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" offsetX="-8" offsetY="-8" />
+                        </Label>
+                    </Controls>
+                </Backdrop>
             </Controls>
-        </Control>
+        </TopLevelControl>
     </Controls>
 </GuiXml>
