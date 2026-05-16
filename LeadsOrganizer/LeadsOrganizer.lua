@@ -8,11 +8,25 @@ LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.3.3"
+LO.version = "1.3.4"
 LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
-local ADM = ANTIQUITY_DATA_MANAGER
+
+local function GetADM()
+    return ANTIQUITY_DATA_MANAGER
+end
+
+local function SafeGetString(stringId, fallback)
+    if not stringId then
+        return fallback
+    end
+    local ok, text = pcall(GetString, stringId)
+    if ok and text and text ~= "" then
+        return text
+    end
+    return fallback
+end
 
 LO.SORT_ZONE = 1
 LO.SORT_EXPIRY = 2
@@ -355,8 +369,9 @@ function LO.CollectFilteredActiveLeads()
     local seen = {}
     local list = {}
 
-    if ADM and ADM.antiquities then
-        for _, antiquityData in pairs(ADM.antiquities) do
+    local adm = GetADM()
+    if adm and adm.antiquities then
+        for _, antiquityData in pairs(adm.antiquities) do
             if antiquityData and IsActiveLeadCandidate(antiquityData) and LO.AntiquityPassesFilters(antiquityData) then
                 local id = (antiquityData.GetId and antiquityData:GetId()) or antiquityData.antiquityId
                 if id and not seen[id] then
@@ -467,10 +482,11 @@ function LO.SetLeadRowSelected(control, antiquityId)
 end
 
 function LO.AntiquityCanScry(antiquityId)
-    if not antiquityId or not ADM then
+    local adm = GetADM()
+    if not antiquityId or not adm then
         return false
     end
-    local data = ADM:GetAntiquityData(antiquityId)
+    local data = adm:GetAntiquityData(antiquityId)
     if not data or not data.CanScry then
         return false
     end
@@ -496,10 +512,11 @@ end
 
 function LO.PerformSelectedCodex()
     local id = LO.selectedAntiquityId
-    if not id or not ADM or not ANTIQUITY_JOURNAL_KEYBOARD then
+    local adm = GetADM()
+    if not id or not adm or not ANTIQUITY_JOURNAL_KEYBOARD then
         return
     end
-    local data = ADM:GetAntiquityData(id)
+    local data = adm:GetAntiquityData(id)
     if not data or not data.GetAntiquityCategoryData then
         return
     end
@@ -536,30 +553,14 @@ function LO.BuildLeadKeybindStripDescriptor()
         {
             alignment = KEYBIND_STRIP_ALIGN_CENTER,
             name = function()
-                return GetString(SI_ANTIQUITY_SCRY)
+                return SafeGetString(SI_ANTIQUITY_SCRY, "Scry")
             end,
             keybind = KEYBIND_SCRY,
             callback = function()
                 LO.PerformSelectedScry()
             end,
             visible = function()
-                return LO.IsPanelActive() and LO.selectedAntiquityId ~= nil
-            end,
-            enabled = function()
-                return LO.selectedAntiquityId ~= nil and LO.AntiquityCanScry(LO.selectedAntiquityId)
-            end,
-        },
-        {
-            alignment = KEYBIND_STRIP_ALIGN_CENTER,
-            name = function()
-                return GetString(SI_ANTIQUITY_VIEW_IN_CODEX)
-            end,
-            keybind = KEYBIND_CODEX,
-            callback = function()
-                LO.PerformSelectedCodex()
-            end,
-            visible = function()
-                return LO.IsPanelActive() and LO.selectedAntiquityId ~= nil
+                return LO.IsPanelActive()
             end,
             enabled = function()
                 return LO.selectedAntiquityId ~= nil
@@ -568,7 +569,23 @@ function LO.BuildLeadKeybindStripDescriptor()
         {
             alignment = KEYBIND_STRIP_ALIGN_CENTER,
             name = function()
-                return GetString(SI_DIALOG_CLOSE)
+                return SafeGetString(SI_ANTIQUITY_VIEW_IN_CODEX, "View in Codex")
+            end,
+            keybind = KEYBIND_CODEX,
+            callback = function()
+                LO.PerformSelectedCodex()
+            end,
+            visible = function()
+                return LO.IsPanelActive()
+            end,
+            enabled = function()
+                return LO.selectedAntiquityId ~= nil
+            end,
+        },
+        {
+            alignment = KEYBIND_STRIP_ALIGN_CENTER,
+            name = function()
+                return SafeGetString(SI_DIALOG_CLOSE, "Close")
             end,
             keybind = "UI_SHORTCUT_NEGATIVE",
             callback = function()
@@ -586,15 +603,8 @@ function LO.InstallLeadKeybindStrip()
     if LO.leadKeybindStripActive or not KEYBIND_STRIP or not LO.leadKeybindStripDescriptor then
         return
     end
-    if KEYBIND_STRIP.PushKeybindGroupState then
-        LO.leadKeybindStripState = KEYBIND_STRIP:PushKeybindGroupState()
-    end
     local ok = pcall(function()
-        if LO.leadKeybindStripState then
-            KEYBIND_STRIP:AddKeybindButtonGroup(LO.leadKeybindStripDescriptor, LO.leadKeybindStripState)
-        else
-            KEYBIND_STRIP:AddKeybindButtonGroup(LO.leadKeybindStripDescriptor)
-        end
+        KEYBIND_STRIP:AddKeybindButtonGroup(LO.leadKeybindStripDescriptor)
     end)
     LO.leadKeybindStripActive = ok
     UpdateLeadKeybindStrip()
@@ -605,19 +615,9 @@ function LO.RemoveLeadKeybindStrip()
         return
     end
     pcall(function()
-        if LO.leadKeybindStripState then
-            KEYBIND_STRIP:RemoveKeybindButtonGroup(LO.leadKeybindStripDescriptor, LO.leadKeybindStripState)
-        else
-            KEYBIND_STRIP:RemoveKeybindButtonGroup(LO.leadKeybindStripDescriptor)
-        end
+        KEYBIND_STRIP:RemoveKeybindButtonGroup(LO.leadKeybindStripDescriptor)
     end)
-    if LO.leadKeybindStripState and KEYBIND_STRIP.PopKeybindGroupState then
-        pcall(function()
-            KEYBIND_STRIP:PopKeybindGroupState(LO.leadKeybindStripState)
-        end)
-    end
     LO.leadKeybindStripActive = false
-    LO.leadKeybindStripState = nil
 end
 
 function LO.SetupResultsScrollList()
@@ -671,7 +671,40 @@ function LO.RefreshPanelLeadList()
     if ZO_ScrollList_ResetToTop then
         ZO_ScrollList_ResetToTop(scroll)
     end
+    LO.TrySelectFirstLead()
     UpdateLeadKeybindStrip()
+end
+
+function LO.TrySelectFirstLead()
+    local scroll = LO.resultsScroll
+    if not scroll then
+        return
+    end
+    local dataList = ZO_ScrollList_GetDataList(scroll)
+    for i = 1, #dataList do
+        local payload = GetRowPayload(dataList[i])
+        if type(payload) == "table" and payload.antiquityId then
+            if ZO_ScrollList_SetHighlightedDataIndex then
+                ZO_ScrollList_SetHighlightedDataIndex(scroll, i)
+            end
+            zo_callLater(function()
+                if not LO.resultsScroll then
+                    return
+                end
+                local control
+                if ZO_ScrollList_GetDataIndexControl then
+                    control = ZO_ScrollList_GetDataIndexControl(LO.resultsScroll, i)
+                end
+                if control and control.loAntiquityId then
+                    LO.SetLeadRowSelected(control, control.loAntiquityId)
+                else
+                    LO.selectedAntiquityId = payload.antiquityId
+                    UpdateLeadKeybindStrip()
+                end
+            end, 0)
+            return
+        end
+    end
 end
 
 function LO.FormatLeadLineDetail(antiquityData)
@@ -707,8 +740,9 @@ end
 function LO.RefreshAntiquityLists()
     LO.ApplySubcategoryFilter()
     LO.SortActiveLeadSections()
-    if ADM then
-        ADM:RefreshAll()
+    local adm = GetADM()
+    if adm then
+        adm:RefreshAll()
     end
     zo_callLater(function()
         if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
@@ -887,6 +921,10 @@ function LO.BuildSettingsMenu()
 end
 
 function LO.InitializeWindow()
+    if LO.windowInitialized then
+        return
+    end
+
     LO.window = LeadsOrganizerWindowTopLevel
     if not LO.window then
         return
@@ -932,30 +970,42 @@ function LO.InitializeWindow()
 
     LO.SetupResultsScrollList()
 
-    local fragment = ZO_FadeSceneFragment:New(LO.window)
-    LO.scene = ZO_Scene:New(LO.SCENE_NAME, SCENE_MANAGER)
-    LO.scene:AddFragment(fragment)
-    if FRAGMENT_GROUP and FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW then
-        LO.scene:AddFragmentGroup(FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW)
-    end
-    SCENE_MANAGER:Add(LO.scene)
-
-    LO.scene:RegisterCallback("StateChange", function(oldState, newState)
-        if newState == SCENE_SHOWING then
-            LO.InstallLeadKeybindStrip()
-        elseif newState == SCENE_SHOWN then
-            LO.SyncWindowControlsFromSettings()
-            LO.RefreshAntiquityLists()
-            UpdateLeadKeybindStrip()
-        elseif newState == SCENE_HIDING or newState == SCENE_HIDDEN then
-            LO.RemoveLeadKeybindStrip()
-            LO.ClearLeadSelection()
+    LO.scene = SCENE_MANAGER:GetScene(LO.SCENE_NAME)
+    if not LO.scene then
+        local fragment = ZO_FadeSceneFragment:New(LO.window)
+        LO.scene = ZO_Scene:New(LO.SCENE_NAME, SCENE_MANAGER)
+        LO.scene:AddFragment(fragment)
+        if FRAGMENT_GROUP and FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW then
+            LO.scene:AddFragmentGroup(FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW)
         end
-    end)
+        SCENE_MANAGER:Add(LO.scene)
+
+        LO.scene:RegisterCallback("StateChange", function(oldState, newState)
+            if newState == SCENE_SHOWING then
+                LO.InstallLeadKeybindStrip()
+            elseif newState == SCENE_SHOWN then
+                LO.SyncWindowControlsFromSettings()
+                LO.RefreshAntiquityLists()
+                UpdateLeadKeybindStrip()
+            elseif newState == SCENE_HIDING or newState == SCENE_HIDDEN then
+                LO.RemoveLeadKeybindStrip()
+                LO.ClearLeadSelection()
+            end
+        end)
+    end
+
+    LO.windowInitialized = true
+end
+
+function LO.EnsureWindow()
+    if not LO.windowInitialized then
+        LO.InitializeWindow()
+    end
+    return LO.scene ~= nil
 end
 
 function LO.ToggleWindow()
-    if not LO.scene then
+    if not LO.EnsureWindow() then
         return
     end
     if SCENE_MANAGER:IsShowing(LO.SCENE_NAME) then
@@ -974,7 +1024,6 @@ function LO.Initialize()
 
     LO.BuildSettingsMenu()
     LO.InstallHooks()
-    LO.InitializeWindow()
 
     EM:RegisterForEvent(LO.name, EVENT_ANTIQUITY_UPDATED, function()
         zo_callLater(LO.RefreshAntiquityLists, 50)
@@ -986,6 +1035,7 @@ function LO.Initialize()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
     EM:RegisterForEvent(LO.name, EVENT_PLAYER_ACTIVATED, function()
+        LO.EnsureWindow()
         zo_callLater(LO.RefreshAntiquityLists, 50)
     end)
 
@@ -1008,7 +1058,10 @@ local function OnAddOnLoaded(_, addOnName)
         return
     end
     EM:UnregisterForEvent(LO.name, EVENT_ADD_ON_LOADED)
-    LO.Initialize()
+    local ok, err = pcall(LO.Initialize)
+    if not ok then
+        d("Leads Organizer failed to initialize: " .. tostring(err))
+    end
 end
 
 EM:RegisterForEvent(LO.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
