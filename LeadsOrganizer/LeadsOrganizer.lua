@@ -8,7 +8,7 @@ LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.2.5"
+LO.version = "1.3.3"
 LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
@@ -34,6 +34,44 @@ local DEFAULT_SETTINGS = {
 
 local NO_EXPIRY_SORT_VALUE = 999999999
 local LEAD_ROW_DATA_TYPE = 1
+
+--- Journal scryable tile: primary = Scry, tertiary = View in Codex (see zo_antiquityjournal_keyboard).
+local KEYBIND_SCRY = "UI_SHORTCUT_PRIMARY"
+local KEYBIND_CODEX = "UI_SHORTCUT_TERTIARY"
+
+local function SafeCall(method, obj, ...)
+    if not obj or not method then
+        return nil
+    end
+    local fn = obj[method]
+    if not fn then
+        return nil
+    end
+    local ok, r1, r2 = pcall(fn, obj, ...)
+    if ok then
+        return r1, r2
+    end
+    return nil
+end
+
+local function SetRowLabelTextColor(label, textColor)
+    if not label or not textColor then
+        return
+    end
+    local r, g, b = GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, textColor)
+    label:SetColor(r, g, b, 1)
+end
+
+local function UpdateLeadKeybindStrip()
+    if not KEYBIND_STRIP or not LO.leadKeybindStripDescriptor or not LO.leadKeybindStripActive then
+        return
+    end
+    if KEYBIND_STRIP.RefreshKeybindButtonGroup then
+        KEYBIND_STRIP:RefreshKeybindButtonGroup(LO.leadKeybindStripDescriptor)
+    elseif KEYBIND_STRIP.UpdateKeybindButtonGroup then
+        KEYBIND_STRIP:UpdateKeybindButtonGroup(LO.leadKeybindStripDescriptor)
+    end
+end
 
 local function FormatSecondsRough(secs)
     if not secs or secs <= 0 or secs >= NO_EXPIRY_SORT_VALUE then
@@ -178,9 +216,18 @@ function LO.HasCompletedBefore(antiquityData)
 end
 
 function LO.AntiquityPassesFilters(antiquityData)
-    local settings = GetSettings()
-    if settings.hideAboveScryingSkill and antiquityData.MeetsScryingSkillRequirements and not antiquityData:MeetsScryingSkillRequirements() then
+    if not antiquityData then
         return false
+    end
+    local settings = GetSettings()
+    if not settings then
+        return true
+    end
+    if settings.hideAboveScryingSkill then
+        local meets = SafeCall("MeetsScryingSkillRequirements", antiquityData)
+        if meets == false then
+            return false
+        end
     end
     if not settings.showGreenAlwaysAvailable and LO.IsGreenAlwaysAvailable(antiquityData) then
         return false
@@ -195,7 +242,8 @@ function LO.AntiquityPassesFilters(antiquityData)
 end
 
 function LO.FilterAllActiveLeads(antiquityData)
-    return LO.AntiquityPassesFilters(antiquityData)
+    local ok, passes = pcall(LO.AntiquityPassesFilters, antiquityData)
+    return ok and passes == true
 end
 
 local function GetLeadSortTime(antiquityData)
@@ -277,7 +325,9 @@ end
 
 function LO.ApplySubcategoryFilter()
     if ZO_SCRYABLE_ANTIQUITY_ALL_LEADS_SUBCATEGORY_DATA then
-        ZO_SCRYABLE_ANTIQUITY_ALL_LEADS_SUBCATEGORY_DATA:SetAntiquityFilterFunction(LO.FilterAllActiveLeads)
+        pcall(function()
+            ZO_SCRYABLE_ANTIQUITY_ALL_LEADS_SUBCATEGORY_DATA:SetAntiquityFilterFunction(LO.FilterAllActiveLeads)
+        end)
     end
 end
 
@@ -323,22 +373,251 @@ function LO.CollectFilteredActiveLeads()
     return list
 end
 
-function LO.SetupLeadScrollRow(control, data)
-    local label = control:GetNamedChild("Text")
-    if not label then
+local function GetRowPayload(data)
+    if type(data) == "table" and data.data ~= nil then
+        return data.data
+    end
+    return data
+end
+
+function LO.ApplyLeadRowSelection(control, antiquityId)
+    if not control or not antiquityId then
         return
     end
-    local payload = data
-    if type(data) == "table" and data.data ~= nil then
-        payload = data.data
+    LO.SetLeadRowSelected(control, antiquityId)
+end
+
+function LO.OnLeadRowMouseUp(control, button, upInside, scrollList)
+    if not upInside or button ~= MOUSE_BUTTON_INDEX_LEFT then
+        return
     end
+    scrollList = scrollList or LO.resultsScroll
+    if scrollList and ZO_ScrollList_MouseClick then
+        ZO_ScrollList_MouseClick(scrollList, control)
+    end
+    if control.loAntiquityId then
+        LO.ApplyLeadRowSelection(control, control.loAntiquityId)
+    end
+end
+
+function LO.OnLeadRowHighlighted(control, data)
+    local antiquityId = control and control.loAntiquityId
+    if not antiquityId and data then
+        local payload = GetRowPayload(data)
+        if type(payload) == "table" then
+            antiquityId = payload.antiquityId
+        end
+    end
+    if control and antiquityId then
+        LO.ApplyLeadRowSelection(control, antiquityId)
+    end
+end
+
+function LO.SetupLeadScrollRow(control, data, scrollList)
+    scrollList = scrollList or LO.resultsScroll
+    local payload = GetRowPayload(data)
     local text = ""
+    control.loAntiquityId = nil
     if type(payload) == "table" then
         text = payload.text or ""
+        control.loAntiquityId = payload.antiquityId
     elseif type(payload) == "string" then
         text = payload
     end
-    label:SetText(text)
+
+    control:SetMouseEnabled(true)
+    if control.SetFont then
+        control:SetFont("ZoFontGameSmall")
+    end
+    if control.SetMaxLineCount then
+        control:SetMaxLineCount(2)
+    end
+    if control.SetWrapMode and TEXT_WRAP_MODE_WRAP_TEXT then
+        control:SetWrapMode(TEXT_WRAP_MODE_WRAP_TEXT)
+    end
+    control:SetText(text)
+
+    if LO.selectedAntiquityId and control.loAntiquityId == LO.selectedAntiquityId then
+        LO.selectedRowControl = control
+        SetRowLabelTextColor(control, INTERFACE_TEXT_COLOR_SELECTED)
+    else
+        SetRowLabelTextColor(control, INTERFACE_TEXT_COLOR_DEFAULT)
+    end
+
+    control:SetHandler("OnMouseUp", nil)
+    control:SetHandler("OnMouseUp", function(rowControl, mouseButton, isUpInside)
+        LO.OnLeadRowMouseUp(rowControl, mouseButton, isUpInside, scrollList)
+    end)
+end
+
+function LO.ClearLeadSelection()
+    LO.selectedRowControl = nil
+    LO.selectedAntiquityId = nil
+    UpdateLeadKeybindStrip()
+end
+
+function LO.SetLeadRowSelected(control, antiquityId)
+    if LO.selectedRowControl and LO.selectedRowControl ~= control then
+        SetRowLabelTextColor(LO.selectedRowControl, INTERFACE_TEXT_COLOR_DEFAULT)
+    end
+    LO.selectedRowControl = control
+    LO.selectedAntiquityId = antiquityId
+    SetRowLabelTextColor(control, INTERFACE_TEXT_COLOR_SELECTED)
+    UpdateLeadKeybindStrip()
+end
+
+function LO.AntiquityCanScry(antiquityId)
+    if not antiquityId or not ADM then
+        return false
+    end
+    local data = ADM:GetAntiquityData(antiquityId)
+    if not data or not data.CanScry then
+        return false
+    end
+    local ok, canScry, _msg = pcall(function()
+        return data:CanScry()
+    end)
+    return ok and canScry == true
+end
+
+function LO.IsPanelActive()
+    return LO.scene and SCENE_MANAGER:IsShowing(LO.SCENE_NAME)
+end
+
+function LO.PerformSelectedScry()
+    local id = LO.selectedAntiquityId
+    if not id or not ScryForAntiquity then
+        return
+    end
+    pcall(function()
+        ScryForAntiquity(id)
+    end)
+end
+
+function LO.PerformSelectedCodex()
+    local id = LO.selectedAntiquityId
+    if not id or not ADM or not ANTIQUITY_JOURNAL_KEYBOARD then
+        return
+    end
+    local data = ADM:GetAntiquityData(id)
+    if not data or not data.GetAntiquityCategoryData then
+        return
+    end
+    local okCat, categoryData = pcall(function()
+        return data:GetAntiquityCategoryData()
+    end)
+    if not okCat or not categoryData or not categoryData.GetId then
+        return
+    end
+    local catId = categoryData:GetId()
+    local formattedName = ""
+    if data.GetFormattedName then
+        local okN, n = pcall(function()
+            return data:GetFormattedName()
+        end)
+        if okN and n then
+            formattedName = n
+        end
+    end
+    pcall(function()
+        if SCENE_MANAGER and not SCENE_MANAGER:IsShowing("antiquityJournalKeyboard") then
+            SCENE_MANAGER:Show("antiquityJournalKeyboard")
+        end
+        ANTIQUITY_JOURNAL_KEYBOARD:ShowCategory(catId, formattedName)
+    end)
+end
+
+function LO.BuildLeadKeybindStripDescriptor()
+    if LO.leadKeybindStripDescriptor then
+        return
+    end
+    -- Visible strip at bottom of screen (same shortcuts as Antiquities journal scryable tiles).
+    LO.leadKeybindStripDescriptor = {
+        {
+            alignment = KEYBIND_STRIP_ALIGN_CENTER,
+            name = function()
+                return GetString(SI_ANTIQUITY_SCRY)
+            end,
+            keybind = KEYBIND_SCRY,
+            callback = function()
+                LO.PerformSelectedScry()
+            end,
+            visible = function()
+                return LO.IsPanelActive() and LO.selectedAntiquityId ~= nil
+            end,
+            enabled = function()
+                return LO.selectedAntiquityId ~= nil and LO.AntiquityCanScry(LO.selectedAntiquityId)
+            end,
+        },
+        {
+            alignment = KEYBIND_STRIP_ALIGN_CENTER,
+            name = function()
+                return GetString(SI_ANTIQUITY_VIEW_IN_CODEX)
+            end,
+            keybind = KEYBIND_CODEX,
+            callback = function()
+                LO.PerformSelectedCodex()
+            end,
+            visible = function()
+                return LO.IsPanelActive() and LO.selectedAntiquityId ~= nil
+            end,
+            enabled = function()
+                return LO.selectedAntiquityId ~= nil
+            end,
+        },
+        {
+            alignment = KEYBIND_STRIP_ALIGN_CENTER,
+            name = function()
+                return GetString(SI_DIALOG_CLOSE)
+            end,
+            keybind = "UI_SHORTCUT_NEGATIVE",
+            callback = function()
+                LO.ToggleWindow()
+            end,
+            visible = function()
+                return LO.IsPanelActive()
+            end,
+        },
+    }
+end
+
+function LO.InstallLeadKeybindStrip()
+    LO.BuildLeadKeybindStripDescriptor()
+    if LO.leadKeybindStripActive or not KEYBIND_STRIP or not LO.leadKeybindStripDescriptor then
+        return
+    end
+    if KEYBIND_STRIP.PushKeybindGroupState then
+        LO.leadKeybindStripState = KEYBIND_STRIP:PushKeybindGroupState()
+    end
+    local ok = pcall(function()
+        if LO.leadKeybindStripState then
+            KEYBIND_STRIP:AddKeybindButtonGroup(LO.leadKeybindStripDescriptor, LO.leadKeybindStripState)
+        else
+            KEYBIND_STRIP:AddKeybindButtonGroup(LO.leadKeybindStripDescriptor)
+        end
+    end)
+    LO.leadKeybindStripActive = ok
+    UpdateLeadKeybindStrip()
+end
+
+function LO.RemoveLeadKeybindStrip()
+    if not LO.leadKeybindStripActive or not KEYBIND_STRIP or not LO.leadKeybindStripDescriptor then
+        return
+    end
+    pcall(function()
+        if LO.leadKeybindStripState then
+            KEYBIND_STRIP:RemoveKeybindButtonGroup(LO.leadKeybindStripDescriptor, LO.leadKeybindStripState)
+        else
+            KEYBIND_STRIP:RemoveKeybindButtonGroup(LO.leadKeybindStripDescriptor)
+        end
+    end)
+    if LO.leadKeybindStripState and KEYBIND_STRIP.PopKeybindGroupState then
+        pcall(function()
+            KEYBIND_STRIP:PopKeybindGroupState(LO.leadKeybindStripState)
+        end)
+    end
+    LO.leadKeybindStripActive = false
+    LO.leadKeybindStripState = nil
 end
 
 function LO.SetupResultsScrollList()
@@ -350,7 +629,11 @@ function LO.SetupResultsScrollList()
     if not LO.resultsScroll or not ZO_ScrollList_AddDataType then
         return
     end
-    ZO_ScrollList_AddDataType(LO.resultsScroll, LEAD_ROW_DATA_TYPE, "LeadsOrganizerLeadRow", 44, LO.SetupLeadScrollRow, nil)
+    -- Built-in ZO_SelectableLabel rows receive mouse clicks; custom Control wrappers often do not.
+    ZO_ScrollList_AddDataType(LO.resultsScroll, LEAD_ROW_DATA_TYPE, "ZO_SelectableLabel", 44, LO.SetupLeadScrollRow, nil)
+    if ZO_ScrollList_EnableHighlight then
+        ZO_ScrollList_EnableHighlight(LO.resultsScroll, "ZO_ThinListHighlight", LO.OnLeadRowHighlighted)
+    end
     LO.leadScrollInitialized = true
 end
 
@@ -360,6 +643,8 @@ function LO.RefreshPanelLeadList()
     if not scroll then
         return
     end
+
+    LO.ClearLeadSelection()
 
     local scrollData = ZO_ScrollList_GetDataList(scroll)
     ZO_ClearNumericallyIndexedTable(scrollData)
@@ -377,7 +662,8 @@ function LO.RefreshPanelLeadList()
             local qualityColor = GetAntiquityQualityColor(quality)
             local name = qualityColor:Colorize(StripGenderSuffix(rawName))
             local line = string.format("• %s — %s", name, LO.FormatLeadLineDetail(antiquityData))
-            table.insert(scrollData, ZO_ScrollList_CreateDataEntry(LEAD_ROW_DATA_TYPE, { text = line }))
+            local id = (antiquityData.GetId and antiquityData:GetId()) or antiquityData.antiquityId
+            table.insert(scrollData, ZO_ScrollList_CreateDataEntry(LEAD_ROW_DATA_TYPE, { text = line, antiquityId = id }))
         end
     end
 
@@ -385,6 +671,7 @@ function LO.RefreshPanelLeadList()
     if ZO_ScrollList_ResetToTop then
         ZO_ScrollList_ResetToTop(scroll)
     end
+    UpdateLeadKeybindStrip()
 end
 
 function LO.FormatLeadLineDetail(antiquityData)
@@ -648,12 +935,21 @@ function LO.InitializeWindow()
     local fragment = ZO_FadeSceneFragment:New(LO.window)
     LO.scene = ZO_Scene:New(LO.SCENE_NAME, SCENE_MANAGER)
     LO.scene:AddFragment(fragment)
+    if FRAGMENT_GROUP and FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW then
+        LO.scene:AddFragmentGroup(FRAGMENT_GROUP.MOUSE_DRIVEN_UI_WINDOW)
+    end
     SCENE_MANAGER:Add(LO.scene)
 
     LO.scene:RegisterCallback("StateChange", function(oldState, newState)
-        if newState == SCENE_SHOWN then
+        if newState == SCENE_SHOWING then
+            LO.InstallLeadKeybindStrip()
+        elseif newState == SCENE_SHOWN then
             LO.SyncWindowControlsFromSettings()
             LO.RefreshAntiquityLists()
+            UpdateLeadKeybindStrip()
+        elseif newState == SCENE_HIDING or newState == SCENE_HIDDEN then
+            LO.RemoveLeadKeybindStrip()
+            LO.ClearLeadSelection()
         end
     end)
 end
