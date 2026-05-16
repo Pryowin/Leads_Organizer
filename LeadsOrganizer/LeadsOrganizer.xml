@@ -1,7 +1,7 @@
 <GuiXml>
     <Controls>
         <TopLevelControl name="LeadsOrganizerWindowTopLevel" movable="true" clampedToScreen="true" mouseEnabled="true" hidden="true" tier="HIGH">
-            <Dimensions x="540" y="640" />
+            <Dimensions x="640" y="700" />
             <Anchor point="CENTER" />
             <Controls>
                 <Backdrop name="$(parent)Backdrop" inherits="ZO_DefaultBackdrop">
@@ -21,13 +21,17 @@
                     <Anchor point="TOPLEFT" relativeTo="$(parent)Title" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="14" />
                 </Label>
                 <Control name="$(parent)SortDropdown" inherits="ZO_ComboBox">
-                    <Dimensions x="500" y="30" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortLabel" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="6" />
+                    <Dimensions y="30" />
+                    <Anchor point="LEFT" relativeTo="$(parent)Backdrop" relativePoint="LEFT" offsetX="16" offsetY="0" />
+                    <Anchor point="RIGHT" relativeTo="$(parent)Backdrop" relativePoint="RIGHT" offsetX="-16" offsetY="0" />
+                    <Anchor point="TOP" relativeTo="$(parent)SortLabel" relativePoint="BOTTOM" offsetX="0" offsetY="6" />
                 </Control>
 
                 <Control name="$(parent)FilterRowHideScrying">
-                    <Dimensions x="508" y="42" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)SortDropdown" relativePoint="BOTTOMLEFT" offsetX="8" offsetY="8" />
+                    <Dimensions y="50" />
+                    <Anchor point="LEFT" relativeTo="$(parent)Backdrop" relativePoint="LEFT" offsetX="24" offsetY="0" />
+                    <Anchor point="RIGHT" relativeTo="$(parent)Backdrop" relativePoint="RIGHT" offsetX="-16" offsetY="0" />
+                    <Anchor point="TOP" relativeTo="$(parent)SortDropdown" relativePoint="BOTTOM" offsetX="0" offsetY="8" />
                     <Controls>
                         <Button name="$(parent)HideScryingToggle" inherits="ZO_CheckButton">
                             <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
@@ -40,8 +44,10 @@
                 </Control>
 
                 <Control name="$(parent)FilterRowShowGreen">
-                    <Dimensions x="508" y="42" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowHideScrying" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Dimensions y="50" />
+                    <Anchor point="LEFT" relativeTo="$(parent)Backdrop" relativePoint="LEFT" offsetX="24" offsetY="0" />
+                    <Anchor point="RIGHT" relativeTo="$(parent)Backdrop" relativePoint="RIGHT" offsetX="-16" offsetY="0" />
+                    <Anchor point="TOP" relativeTo="$(parent)FilterRowHideScrying" relativePoint="BOTTOM" offsetX="0" offsetY="2" />
                     <Controls>
                         <Button name="$(parent)ShowGreenToggle" inherits="ZO_CheckButton">
                             <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
@@ -54,8 +60,10 @@
                 </Control>
 
                 <Control name="$(parent)FilterRowShowDone">
-                    <Dimensions x="508" y="42" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowShowGreen" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Dimensions y="50" />
+                    <Anchor point="LEFT" relativeTo="$(parent)Backdrop" relativePoint="LEFT" offsetX="24" offsetY="0" />
+                    <Anchor point="RIGHT" relativeTo="$(parent)Backdrop" relativePoint="RIGHT" offsetX="-16" offsetY="0" />
+                    <Anchor point="TOP" relativeTo="$(parent)FilterRowShowGreen" relativePoint="BOTTOM" offsetX="0" offsetY="2" />
                     <Controls>
                         <Button name="$(parent)ShowDoneToggle" inherits="ZO_CheckButton">
                             <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />
@@ -68,8 +76,10 @@
                 </Control>
 
                 <Control name="$(parent)FilterRowCurrentZone">
-                    <Dimensions x="508" y="42" />
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)FilterRowShowDone" relativePoint="BOTTOMLEFT" offsetX="0" offsetY="2" />
+                    <Dimensions y="50" />
+                    <Anchor point="LEFT" relativeTo="$(parent)Backdrop" relativePoint="LEFT" offsetX="24" offsetY="0" />
+                    <Anchor point="RIGHT" relativeTo="$(parent)Backdrop" relativePoint="RIGHT" offsetX="-16" offsetY="0" />
+                    <Anchor point="TOP" relativeTo="$(parent)FilterRowShowDone" relativePoint="BOTTOM" offsetX="0" offsetY="2" />
                     <Controls>
                         <Button name="$(parent)CurrentZoneOnlyToggle" inherits="ZO_CheckButton">
                             <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="0" offsetY="6" />

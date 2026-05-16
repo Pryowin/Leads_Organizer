@@ -442,7 +442,7 @@ function LO.SetupLeadScrollRow(control, data, scrollList)
 
     control:SetMouseEnabled(true)
     if control.SetFont then
-        control:SetFont("ZoFontGameSmall")
+        control:SetFont("ZoFontGameMedium")
     end
     if control.SetMaxLineCount then
         control:SetMaxLineCount(2)
@@ -630,7 +630,7 @@ function LO.SetupResultsScrollList()
         return
     end
     -- Built-in ZO_SelectableLabel rows receive mouse clicks; custom Control wrappers often do not.
-    ZO_ScrollList_AddDataType(LO.resultsScroll, LEAD_ROW_DATA_TYPE, "ZO_SelectableLabel", 44, LO.SetupLeadScrollRow, nil)
+    ZO_ScrollList_AddDataType(LO.resultsScroll, LEAD_ROW_DATA_TYPE, "ZO_SelectableLabel", 52, LO.SetupLeadScrollRow, nil)
     if ZO_ScrollList_EnableHighlight then
         ZO_ScrollList_EnableHighlight(LO.resultsScroll, "ZO_ThinListHighlight", LO.OnLeadRowHighlighted)
     end
