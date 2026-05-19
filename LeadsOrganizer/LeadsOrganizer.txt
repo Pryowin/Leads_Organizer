@@ -3,7 +3,7 @@
 ## Version: 1.3.4
 ## APIVersion: 101049 101050
 ## AddOnVersion: 102034
-## Author: ESO Community
+## Author: Pyrowin
 ## SavedVariables: LeadsOrganizer_SavedVariables
 
 LeadsOrganizer.xml
