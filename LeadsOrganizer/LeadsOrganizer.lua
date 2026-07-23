@@ -8,7 +8,7 @@ LeadsOrganizer = LeadsOrganizer or {}
 local LO = LeadsOrganizer
 
 LO.name = "LeadsOrganizer"
-LO.version = "1.3.4"
+LO.version = "1.4.0"
 LO.SCENE_NAME = "LeadsOrganizerMainScene"
 
 local EM = EVENT_MANAGER
@@ -50,7 +50,9 @@ local NO_EXPIRY_SORT_VALUE = 999999999
 local LEAD_ROW_DATA_TYPE = 1
 
 --- Journal scryable tile: primary = Scry, tertiary = View in Codex (see zo_antiquityjournal_keyboard).
+--- Secondary (R) is free on that strip; used for Travel to Zone via Beam Me Up.
 local KEYBIND_SCRY = "UI_SHORTCUT_PRIMARY"
+local KEYBIND_TRAVEL = "UI_SHORTCUT_SECONDARY"
 local KEYBIND_CODEX = "UI_SHORTCUT_TERTIARY"
 
 local function SafeCall(method, obj, ...)
@@ -544,11 +546,256 @@ function LO.PerformSelectedCodex()
     end)
 end
 
+---------------------------------------------------------------------------
+-- Travel to zone (same Beam Me Up path as SurveyMapTeleport)
+---------------------------------------------------------------------------
+
+local function NormalizeZoneId(zoneId)
+    return tonumber(zoneId) or zoneId
+end
+
+local function ZoneIdsMatch(zoneIdA, zoneIdB)
+    zoneIdA = NormalizeZoneId(zoneIdA)
+    zoneIdB = NormalizeZoneId(zoneIdB)
+    if not zoneIdA or not zoneIdB then
+        return false
+    end
+    if zoneIdA == zoneIdB then
+        return true
+    end
+    if BMU and BMU.getParentZoneId then
+        local parentA = NormalizeZoneId(BMU.getParentZoneId(zoneIdA))
+        local parentB = NormalizeZoneId(BMU.getParentZoneId(zoneIdB))
+        return parentA == zoneIdB or parentB == zoneIdA or (parentA and parentB and parentA == parentB)
+    end
+    return false
+end
+
+local function HouseMatchesZone(record, zoneId, parentZoneId)
+    if not record then
+        return false
+    end
+    return ZoneIdsMatch(record.zoneId, zoneId)
+        or ZoneIdsMatch(record.zoneId, parentZoneId)
+        or ZoneIdsMatch(record.parentZoneId, zoneId)
+        or ZoneIdsMatch(record.parentZoneId, parentZoneId)
+end
+
+local function GetPreferredHouseIdForZone(zoneId, parentZoneId)
+    if not BMU or not BMU.getZoneSpecificHouse then
+        return nil
+    end
+    local preferred = BMU.getZoneSpecificHouse(zoneId) or BMU.getZoneSpecificHouse(parentZoneId)
+    if preferred and preferred > 0 then
+        return preferred
+    end
+    local zoneHouses = BMU.savedVarsServ and BMU.savedVarsServ.zoneSpecificHouses
+    if not zoneHouses then
+        return nil
+    end
+    for mappedZoneId, houseId in pairs(zoneHouses) do
+        if ZoneIdsMatch(mappedZoneId, zoneId) or ZoneIdsMatch(mappedZoneId, parentZoneId) then
+            if houseId and houseId > 0 then
+                return houseId
+            end
+        end
+    end
+    return nil
+end
+
+local function GetOwnedHousesList()
+    if BMU.IsNotKeyboard and BMU.IsNotKeyboard() then
+        return ZO_COLLECTIBLE_DATA_MANAGER:GetAllCollectibleDataObjects(
+            { ZO_CollectibleCategoryData.IsHousingCategory },
+            { ZO_CollectibleData.IsUnlocked }
+        )
+    end
+    if COLLECTIONS_BOOK_SINGLETON then
+        return COLLECTIONS_BOOK_SINGLETON:GetOwnedHouses()
+    end
+    return {}
+end
+
+local function GetHouseIdFromEntry(house, isGamepad)
+    if isGamepad then
+        return house:GetReferenceId()
+    end
+    return house.houseId
+end
+
+local function FindOwnedHouseInZone(zoneId, parentZoneId)
+    local parentZoneName = BMU.formatName(GetZoneNameById(parentZoneId), false)
+    local preferredHouseId = GetPreferredHouseIdForZone(zoneId, parentZoneId)
+    local fallbackHouseId
+    local isGamepad = BMU.IsNotKeyboard and BMU.IsNotKeyboard()
+
+    for _, house in pairs(GetOwnedHousesList()) do
+        local houseId = GetHouseIdFromEntry(house, isGamepad)
+        if houseId and houseId > 0 then
+            local houseZoneId = GetHouseZoneId(houseId)
+            if ZoneIdsMatch(houseZoneId, zoneId) or ZoneIdsMatch(houseZoneId, parentZoneId) then
+                if preferredHouseId and houseId == preferredHouseId then
+                    return houseId, parentZoneName
+                end
+                if not fallbackHouseId then
+                    fallbackHouseId = houseId
+                end
+            end
+        end
+    end
+
+    if preferredHouseId and preferredHouseId > 0 then
+        return preferredHouseId, parentZoneName
+    end
+    return fallbackHouseId, parentZoneName
+end
+
+local function ResolveHouseForZone(zoneId, resultTable)
+    local parentZoneId = NormalizeZoneId(BMU.getParentZoneId(zoneId))
+    zoneId = NormalizeZoneId(zoneId)
+    local parentZoneName = BMU.formatName(GetZoneNameById(parentZoneId), false)
+    local preferredHouseId = GetPreferredHouseIdForZone(zoneId, parentZoneId)
+
+    if preferredHouseId and preferredHouseId > 0 then
+        return preferredHouseId, parentZoneName
+    end
+
+    if resultTable then
+        for _, record in pairs(resultTable) do
+            if record and record.isOwnHouse and record.houseId and record.houseId > 0 then
+                if HouseMatchesZone(record, zoneId, parentZoneId) then
+                    return record.houseId, record.parentZoneName or parentZoneName
+                end
+            end
+        end
+    end
+
+    return FindOwnedHouseInZone(zoneId, parentZoneId)
+end
+
+local function JumpToHouseOutside(houseId, zoneId)
+    if BMU.portToOwnHouseWithZonePreference then
+        -- Preferred house for zone first, then houseId as fallback (never primary residence).
+        BMU.portToOwnHouseWithZonePreference(true, zoneId, true, houseId)
+    elseif BMU.portToOwnHouse then
+        local parentZoneId = BMU.getParentZoneId(zoneId)
+        local parentZoneName = BMU.formatName(GetZoneNameById(parentZoneId), false)
+        BMU.portToOwnHouse(false, houseId, true, parentZoneName)
+    end
+end
+
+local function TryPortToHouseInZone(zoneId, resultTable)
+    if not BMU.portToOwnHouse and not BMU.portToOwnHouseWithZonePreference then
+        return false
+    end
+    if not CanLeaveCurrentLocationViaTeleport() then
+        return false
+    end
+
+    local houseId = ResolveHouseForZone(zoneId, resultTable)
+    if not houseId or houseId == 0 then
+        return false
+    end
+
+    -- Defer like Beam Me Up / SurveyMapTeleport (secure call context).
+    zo_callLater(function()
+        if not CanLeaveCurrentLocationViaTeleport() then
+            return
+        end
+        JumpToHouseOutside(houseId, zoneId)
+    end, 250)
+
+    return true
+end
+
+local function ReportNoTravel()
+    if BMU and BMU.printToChat and BMU.SI then
+        BMU.printToChat(BMU.SI.get("SI_TELE_CHAT_NO_FAST_TRAVEL"))
+    else
+        CHAT_ROUTER:AddSystemMessage("Leads Organizer: No travel option for this zone (no players, no house there, or no wayshrine discovered).")
+    end
+end
+
+--- Player jump first; then own house in zone; then wayshrine recall for overland zones.
+local function PortToZone(zoneId)
+    zoneId = NormalizeZoneId(zoneId)
+    local resultTable = BMU.createTable({
+        index = BMU.indexListZoneHidden,
+        fZoneId = zoneId,
+        dontDisplay = true,
+        noOwnHouses = false,
+    })
+
+    for _, entry in pairs(resultTable) do
+        if entry and entry.displayName and entry.displayName ~= "" and not entry.zoneWithoutPlayer then
+            BMU.PortalToPlayer(
+                entry.displayName,
+                entry.sourceIndexLeading,
+                entry.zoneName,
+                entry.zoneId,
+                entry.category,
+                true,
+                true,
+                true
+            )
+            return
+        end
+    end
+
+    if TryPortToHouseInZone(zoneId, resultTable) then
+        return
+    end
+
+    if BMU.isZoneOverlandZone and BMU.isZoneOverlandZone(zoneId) and BMU.PortalToZone then
+        BMU.PortalToZone(zoneId)
+        return
+    end
+
+    ReportNoTravel()
+end
+
+function LO.GetSelectedLeadZoneId()
+    local id = LO.selectedAntiquityId
+    if not id then
+        return nil
+    end
+    local adm = GetADM()
+    local data = adm and adm:GetAntiquityData(id)
+    if not data then
+        return nil
+    end
+    local zoneId = GetLeadObjectZoneId(data)
+    if not zoneId or zoneId == 0 then
+        return nil
+    end
+    return zoneId
+end
+
+function LO.CanTravelToSelectedLeadZone()
+    return LO.GetSelectedLeadZoneId() ~= nil
+end
+
+function LO.PerformSelectedTravelToZone()
+    if not BMU or not BMU.createTable or not BMU.PortalToPlayer or not BMU.portToOwnHouse then
+        CHAT_ROUTER:AddSystemMessage("Leads Organizer: Travel to Zone requires Beam Me Up to be enabled.")
+        return
+    end
+
+    local zoneId = LO.GetSelectedLeadZoneId()
+    if not zoneId then
+        CHAT_ROUTER:AddSystemMessage("Leads Organizer: Could not determine the zone for this lead.")
+        return
+    end
+
+    PortToZone(zoneId)
+end
+
 function LO.BuildLeadKeybindStripDescriptor()
     if LO.leadKeybindStripDescriptor then
         return
     end
     -- Visible strip at bottom of screen (same shortcuts as Antiquities journal scryable tiles).
+    -- Secondary (R) = Travel to Zone (Beam Me Up); free on the journal tile strip.
     LO.leadKeybindStripDescriptor = {
         {
             alignment = KEYBIND_STRIP_ALIGN_CENTER,
@@ -564,6 +811,22 @@ function LO.BuildLeadKeybindStripDescriptor()
             end,
             enabled = function()
                 return LO.selectedAntiquityId ~= nil
+            end,
+        },
+        {
+            alignment = KEYBIND_STRIP_ALIGN_CENTER,
+            name = function()
+                return "Travel to Zone"
+            end,
+            keybind = KEYBIND_TRAVEL,
+            callback = function()
+                LO.PerformSelectedTravelToZone()
+            end,
+            visible = function()
+                return LO.IsPanelActive()
+            end,
+            enabled = function()
+                return LO.CanTravelToSelectedLeadZone()
             end,
         },
         {
